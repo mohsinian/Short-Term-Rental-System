@@ -1,0 +1,8 @@
+services:
+  # Service for running the pipeline scripts
+  pipeline:
+    build: .
+    env_file: .env
+    volumes:
+      - .:/app
+    command: python pipeline/ingest.py

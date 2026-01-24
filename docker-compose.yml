@@ -5,4 +5,4 @@ services:
     env_file: .env
     volumes:
       - .:/app
-    command: python pipeline/ingest.py
+    command: python pipeline/clean_data.py

@@ -3,6 +3,7 @@ import sys
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
+
 def test_connection():
     # 1. Load Environment Variables
     load_dotenv()
@@ -20,7 +21,7 @@ def test_connection():
         supabase: Client = create_client(url, key)
 
         # 3. Simple API Call for testing
-        res = supabase.table('tahsin').select("*").limit(1).execute() 
+        res = supabase.table("tahsin").select("*").limit(1).execute()
 
         print("✅ SUCCESS: Supabase client initialized and connected.")
         return True
@@ -28,6 +29,7 @@ def test_connection():
     except Exception as e:
         print(f"❌ CONNECTION FAILED: {e}")
         return False
+
 
 if __name__ == "__main__":
     test_connection()

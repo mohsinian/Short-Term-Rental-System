@@ -47,7 +47,6 @@ def clean_market_data(df, market_name):
 
     # 2. Drop Low Value Columns
     cols_to_drop = [
-        "Airbnb Host URL",
         "url",
         "error_reason",
         "Location",
@@ -131,6 +130,45 @@ def clean_market_data(df, market_name):
     else:
         df_clean["bathrooms"] = np.nan
 
+    # Airbnb Listing URL -> Airbnb URL
+    if "Airbnb Listing URL" in df_clean.columns:
+        df_clean["Airbnb URL"] = df_clean["Airbnb Listing URL"]
+    # Vrbo Listing URL -> VRBO URL
+    if "Vrbo Listing URL" in df_clean.columns:
+        df_clean["VRBO URL"] = df_clean["Vrbo Listing URL"]
+    # ZIPCODE -> Zip Code
+    if "ZIPCODE" in df_clean.columns:
+        df_clean["Zip Code"] = df_clean["ZIPCODE"]
+    # CITY_NAME -> City
+    if "CITY_NAME" in df_clean.columns:
+        df_clean["City"] = df_clean["CITY_NAME"]
+    # ACCOMMODATES -> Accommodates
+    if "ACCOMMODATES" in df_clean.columns:
+        df_clean["Accommodates"] = df_clean["ACCOMMODATES"]
+    # propertyType -> Property Type
+    if "propertyType" in df_clean.columns:
+        df_clean["Property Type"] = df_clean["propertyType"]
+    # roomType -> Room Type
+    if "roomType" in df_clean.columns:
+        df_clean["Room Type"] = df_clean["roomType"]
+    # INSTANT_BOOK -> Instant Book
+    if "INSTANT_BOOK" in df_clean.columns:
+        df_clean["Instant Book"] = df_clean["INSTANT_BOOK"]
+    # MINIMUM_STAY -> Min Stay
+    if "MINIMUM_STAY" in df_clean.columns:
+        df_clean["Min Stay"] = df_clean["MINIMUM_STAY"]
+    # is_guest_favorite -> Guest Favorite
+    if "is_guest_favorite" in df_clean.columns:
+        df_clean["Guest Favorite"] = df_clean["is_guest_favorite"]
+    # Airbnb Host URL -> Host URL
+    if "Airbnb Host URL" in df_clean.columns:
+        df_clean["Host URL"] = df_clean["Airbnb Host URL"]
+    # SUPERHOST -> Super Host (prefer lowercase version if available)
+    if "is_super_host" in df_clean.columns:
+        df_clean["Super Host"] = df_clean["is_super_host"]
+    elif "SUPERHOST" in df_clean.columns:
+        df_clean["Super Host"] = df_clean["SUPERHOST"]
+
     # 4. Type Conversions & Specific Formatting
 
     # Price Tier: Extract integer (e.g., "5. Luxury" -> 5)
@@ -177,28 +215,39 @@ def clean_market_data(df, market_name):
 
 
 def main():
-    file_map = {
-        "Blue Ridge": "data/Blue Ridge GA - Market Eval - FINAL - Base_Table.csv",
-        "Bradenton": "data/Bradenton FL - Market Eval - FINAL - Base_Table.csv",
-        "Indianapolis": "data/Indianapolis IN - FINAL - Base_Table.csv",
-    }
+    from pathlib import Path
+
+    # Auto-discover CSV files in data directory
+    data_dir = Path("data")
+    csv_files = list(data_dir.glob("*.csv"))
+
+    # Filter out the cleaned combined file
+    csv_files = [f for f in csv_files if f.name != "cleaned_combined_properties.csv"]
+
+    if not csv_files:
+        print("No CSV files found in data directory.")
+        return None
 
     all_dfs = []
 
-    for market, filename in file_map.items():
-        print(f"Processing {market} from {filename}...")
+    for csv_file in csv_files:
+        # Extract market name from filename (remove .csv extension)
+        market_name = csv_file.stem  # e.g., "Blue_Ridge_GA"
+        print(f"Processing {market_name} from {csv_file}...")
         try:
             # Load CSV
-            df = pd.read_csv(filename)
+            df = pd.read_csv(csv_file)
 
             # Clean
-            cleaned_df = clean_market_data(df, market)
+            cleaned_df = clean_market_data(df, market_name)
 
             all_dfs.append(cleaned_df)
             print(f"  -> Loaded {len(cleaned_df)} properties.")
 
         except FileNotFoundError:
-            print(f"  -> File {filename} not found. Skipping.")
+            print(f"  -> File {csv_file} not found. Skipping.")
+        except Exception as e:
+            print(f"  -> Error processing {csv_file}: {e}. Skipping.")
 
     # Combine all markets
     if all_dfs:

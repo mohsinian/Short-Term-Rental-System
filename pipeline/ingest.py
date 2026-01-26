@@ -1,35 +1,29 @@
-import os
+"""
+Test script for Supabase connection using supabase-py.
+
+This script tests the connection to Supabase using the supabase-py library.
+"""
+
 import sys
-from supabase import create_client, Client
-from dotenv import load_dotenv
+from src.database.supabase_client import test_connection
 
 
-def test_connection():
-    # 1. Load Environment Variables
-    load_dotenv()
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_SECRET_KEY")
+def main():
+    """Main entry point for testing Supabase connection."""
+    print("Testing Supabase connection using supabase-py...")
+    print("=" * 60)
 
-    if not url or not key:
-        print("❌ Error: Missing SUPABASE_URL or SUPABASE_SERVICE_KEY in .env")
-        sys.exit(1)
+    success = test_connection()
 
-    print(f"Connecting to: {url}...")
-
-    # 2. Initialize Client
-    try:
-        supabase: Client = create_client(url, key)
-
-        # 3. Simple API Call for testing
-        res = supabase.table("tahsin").select("*").limit(1).execute()
-
-        print("✅ SUCCESS: Supabase client initialized and connected.")
-        return True
-
-    except Exception as e:
-        print(f"❌ CONNECTION FAILED: {e}")
-        return False
+    if success:
+        print("=" * 60)
+        print("✅ Connection test passed!")
+        return 0
+    else:
+        print("=" * 60)
+        print("❌ Connection test failed!")
+        return 1
 
 
 if __name__ == "__main__":
-    test_connection()
+    sys.exit(main())

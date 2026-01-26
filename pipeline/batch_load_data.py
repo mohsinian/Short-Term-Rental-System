@@ -6,14 +6,23 @@ large datasets into Supabase/PostgreSQL, significantly reducing the time
 compared to row-by-row operations.
 
 Strategies:
-1. PostgreSQL COPY: Fastest - Direct PostgreSQL connection using COPY command
+1. PostgreSQL COPY with Temp Tables: Fastest - COPY to temp tables + INSERT...ON CONFLICT upsert
 2. Supabase Batch Insert: Fast - Batch inserts via Supabase API
 3. Parallel Processing: Optimized - Concurrent batch operations
 
 Performance Improvements:
-- COPY command: 100-1000x faster than individual inserts
+- COPY with temp tables: 100-1000x faster than individual inserts, with proper upsert support
 - Batch inserts: 10-100x faster than individual inserts
 - Parallel processing: 2-4x faster for independent operations
+
+Temp Table Approach:
+For hosts, properties, property_performance, and property_amenities:
+1. COPY data into temp tables (fast bulk load)
+2. Call upsert functions to move data from temp to main tables with INSERT...ON CONFLICT
+3. This provides both speed and proper duplicate handling with updates
+
+For markets:
+- Direct upsert via Supabase API (markets are relatively static and few in number)
 """
 
 import io
@@ -42,7 +51,11 @@ logger = logging.getLogger(__name__)
 
 class BatchDataLoader:
     """
-    High-performance batch data loader with multiple loading strategies.
+    High-performance batch data loader with temp table upsert strategy.
+
+    Uses PostgreSQL COPY command to load data into temp tables, then
+    INSERT...ON CONFLICT to move data to main tables with proper upsert logic.
+    This provides the speed of bulk loading with the flexibility of upserts.
     """
 
     def __init__(
@@ -60,7 +73,7 @@ class BatchDataLoader:
             cleaned_data_path: Path to the cleaned CSV file.
             limit: Optional limit on number of properties to load (for testing).
             batch_size: Number of records per batch for batch insert strategy.
-            use_copy_command: Whether to use PostgreSQL COPY command (requires DB connection).
+            use_copy_command: Whether to use PostgreSQL COPY with temp tables (requires DB connection).
             max_workers: Number of parallel workers for concurrent operations.
         """
         load_dotenv()
@@ -357,54 +370,33 @@ class BatchDataLoader:
             raise
 
     def _load_hosts_copy(self, host_data: List[Dict[str, Any]]) -> None:
-        """Load hosts using PostgreSQL COPY command."""
+        """Load hosts using PostgreSQL COPY command with temp table upsert."""
         if not host_data:
             return
 
-        logger.info(f"Loading {len(host_data)} hosts using COPY command...")
+        logger.info(f"Loading {len(host_data)} hosts using COPY with temp table upsert...")
 
         try:
             cursor = self.pg_conn.cursor()
 
-            # Check existing hosts to identify duplicates
-            existing_hosts = set()
-            cursor.execute("SELECT airbnb_host_id FROM hosts")
-            for (airbnb_host_id,) in cursor.fetchall():
-                existing_hosts.add(airbnb_host_id)
+            # Create temp table if it doesn't exist
+            cursor.execute("""
+                CREATE TEMP TABLE IF NOT EXISTS hosts_temp (
+                    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+                    airbnb_host_id VARCHAR(255) UNIQUE,
+                    airbnb_host_url TEXT,
+                    is_super_host BOOLEAN DEFAULT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
 
-            # Filter out duplicates
-            filtered_host_data = []
-            duplicates = []
-            for host in host_data:
-                if host["airbnb_host_id"] in existing_hosts:
-                    duplicates.append(host["airbnb_host_id"])
-                else:
-                    filtered_host_data.append(host)
-
-            if duplicates:
-                logger.warning(f"Skipping {len(duplicates)} duplicate hosts")
-
-            if not filtered_host_data:
-                logger.info("All hosts already exist, skipping COPY operation")
-                # Build ID map from existing hosts
-                for host in host_data:
-                    cursor.execute(
-                        "SELECT id FROM hosts WHERE airbnb_host_id = %s",
-                        (host["airbnb_host_id"],),
-                    )
-                    result = cursor.fetchone()
-                    if result:
-                        self.host_id_map[host["airbnb_host_id"]] = result[0]
-                cursor.close()
-                return
-
-            logger.info(
-                f"Loading {len(filtered_host_data)} new hosts (skipped {len(duplicates)} duplicates)"
-            )
+            # Clear temp table
+            cursor.execute("TRUNCATE TABLE hosts_temp")
 
             # Create CSV-like data in memory
             csv_buffer = io.StringIO()
-            for host in filtered_host_data:
+            for host in host_data:
                 # Format: airbnb_host_id,airbnb_host_url,is_super_host
                 airbnb_host_id = (
                     host["airbnb_host_id"]
@@ -424,22 +416,28 @@ class BatchDataLoader:
 
             csv_buffer.seek(0)
 
-            # Execute COPY command
+            # Execute COPY command to temp table
             cursor.copy_expert(
-                "COPY hosts (airbnb_host_id, airbnb_host_url, is_super_host) FROM STDIN WITH (FORMAT text, NULL '\\N', DELIMITER E'\\t')",
+                "COPY hosts_temp (airbnb_host_id, airbnb_host_url, is_super_host) FROM STDIN WITH (FORMAT text, NULL '\\N', DELIMITER E'\\t')",
                 csv_buffer,
             )
 
+            # Call upsert function to move data from temp to main table
+            cursor.execute("SELECT * FROM upsert_hosts_from_temp()")
+            inserted, updated = cursor.fetchone()
+
+            logger.info(f"  Hosts upserted: {inserted} inserted, {updated} updated")
+
             self.pg_conn.commit()
 
-            # Fetch inserted data to build ID map
+            # Fetch all hosts to build ID map (including existing ones)
             cursor.execute("SELECT id, airbnb_host_id FROM hosts")
             for row in cursor.fetchall():
                 host_id, airbnb_host_id = row
                 self.host_id_map[airbnb_host_id] = host_id
 
             cursor.close()
-            logger.info(f"✅ Loaded {len(filtered_host_data)} hosts via COPY")
+            logger.info(f"✅ Loaded {len(host_data)} hosts via COPY with upsert")
 
         except Exception as e:
             self.pg_conn.rollback()
@@ -562,14 +560,49 @@ class BatchDataLoader:
             raise
 
     def _load_properties_copy(self, property_data: List[Dict[str, Any]]) -> None:
-        """Load properties using PostgreSQL COPY command."""
+        """Load properties using PostgreSQL COPY command with temp table upsert."""
         if not property_data:
             return
 
-        logger.info(f"Loading {len(property_data)} properties using COPY command...")
+        logger.info(f"Loading {len(property_data)} properties using COPY with temp table upsert...")
 
         try:
             cursor = self.pg_conn.cursor()
+
+            # Create temp table if it doesn't exist
+            cursor.execute("""
+                CREATE TEMP TABLE IF NOT EXISTS properties_temp (
+                    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+                    market_id UUID,
+                    host_id UUID,
+                    property_id VARCHAR(255) NOT NULL UNIQUE,
+                    airbnb_listing_url TEXT,
+                    vrbo_listing_url TEXT,
+                    title VARCHAR(500),
+                    listing_name VARCHAR(500),
+                    description TEXT,
+                    latitude DOUBLE PRECISION,
+                    longitude DOUBLE PRECISION,
+                    zipcode VARCHAR(20),
+                    city_name VARCHAR(100),
+                    bedrooms NUMERIC,
+                    bathrooms NUMERIC,
+                    accommodates INTEGER,
+                    property_type VARCHAR(100),
+                    room_type VARCHAR(100),
+                    beds INTEGER,
+                    price_tier INTEGER,
+                    instant_book BOOLEAN,
+                    min_stay INTEGER,
+                    is_guest_favorite BOOLEAN DEFAULT FALSE,
+                    is_reliable_data BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+
+            # Clear temp table
+            cursor.execute("TRUNCATE TABLE properties_temp")
 
             # Create CSV-like data in memory
             csv_buffer = io.StringIO()
@@ -629,22 +662,28 @@ class BatchDataLoader:
 
             csv_buffer.seek(0)
 
-            # Execute COPY command with ON CONFLICT for upsert
+            # Execute COPY command to temp table
             cursor.copy_expert(
-                f"COPY properties ({', '.join(columns)}) FROM STDIN WITH (FORMAT text, NULL '\\N', DELIMITER E'\\t')",
+                f"COPY properties_temp ({', '.join(columns)}) FROM STDIN WITH (FORMAT text, NULL '\\N', DELIMITER E'\\t')",
                 csv_buffer,
             )
 
+            # Call upsert function to move data from temp to main table
+            cursor.execute("SELECT * FROM upsert_properties_from_temp()")
+            inserted, updated = cursor.fetchone()
+
+            logger.info(f"  Properties upserted: {inserted} inserted, {updated} updated")
+
             self.pg_conn.commit()
 
-            # Fetch inserted data to build ID map
+            # Fetch all properties to build ID map (including existing ones)
             cursor.execute("SELECT id, property_id FROM properties")
             for row in cursor.fetchall():
                 prop_id, property_id = row
                 self.property_id_map[str(property_id)] = prop_id
 
             cursor.close()
-            logger.info(f"✅ Loaded {len(property_data)} properties via COPY")
+            logger.info(f"✅ Loaded {len(property_data)} properties via COPY with upsert")
 
         except Exception as e:
             self.pg_conn.rollback()
@@ -712,12 +751,12 @@ class BatchDataLoader:
             raise
 
     def _load_amenities_copy(self, amenity_data: List[Dict[str, Any]]) -> None:
-        """Load amenities using PostgreSQL COPY command."""
+        """Load amenities using PostgreSQL COPY command with temp table upsert."""
         if not amenity_data:
             return
 
         logger.info(
-            f"Loading {len(amenity_data)} amenity records using COPY command..."
+            f"Loading {len(amenity_data)} amenity records using COPY with temp table upsert..."
         )
 
         # Create a separate connection for this thread to avoid conflicts
@@ -732,37 +771,23 @@ class BatchDataLoader:
             pg_conn.autocommit = False
             cursor = pg_conn.cursor()
 
-            # Check existing amenities to identify duplicates
-            existing_property_ids = set()
-            cursor.execute("SELECT property_id FROM property_amenities")
-            for (property_id,) in cursor.fetchall():
-                existing_property_ids.add(str(property_id))
+            # Create temp table if it doesn't exist
+            cursor.execute("""
+                CREATE TEMP TABLE IF NOT EXISTS property_amenities_temp (
+                    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+                    property_id UUID NOT NULL UNIQUE,
+                    amenities JSONB NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
 
-            # Filter out duplicates
-            filtered_amenity_data = []
-            duplicates = []
-            for amenity in amenity_data:
-                if str(amenity["property_id"]) in existing_property_ids:
-                    duplicates.append(amenity["property_id"])
-                else:
-                    filtered_amenity_data.append(amenity)
-
-            if duplicates:
-                logger.warning(f"Skipping {len(duplicates)} duplicate amenities")
-
-            if not filtered_amenity_data:
-                logger.info("All amenities already exist, skipping COPY operation")
-                cursor.close()
-                pg_conn.close()
-                return
-
-            logger.info(
-                f"Loading {len(filtered_amenity_data)} new amenity records (skipped {len(duplicates)} duplicates)"
-            )
+            # Clear temp table
+            cursor.execute("TRUNCATE TABLE property_amenities_temp")
 
             # Create CSV-like data in memory
             csv_buffer = io.StringIO()
-            for amenity in filtered_amenity_data:
+            for amenity in amenity_data:
                 property_id = amenity["property_id"]
                 amenities_json = (
                     amenity["amenities"]
@@ -774,16 +799,22 @@ class BatchDataLoader:
 
             csv_buffer.seek(0)
 
-            # Execute COPY command
+            # Execute COPY command to temp table
             cursor.copy_expert(
-                "COPY property_amenities (property_id, amenities) FROM STDIN WITH (FORMAT text, NULL '\\N', DELIMITER E'\\t')",
+                "COPY property_amenities_temp (property_id, amenities) FROM STDIN WITH (FORMAT text, NULL '\\N', DELIMITER E'\\t')",
                 csv_buffer,
             )
+
+            # Call upsert function to move data from temp to main table
+            cursor.execute("SELECT * FROM upsert_property_amenities_from_temp()")
+            inserted, updated = cursor.fetchone()
+
+            logger.info(f"  Amenities upserted: {inserted} inserted, {updated} updated")
 
             pg_conn.commit()
             cursor.close()
             pg_conn.close()
-            logger.info(f"✅ Loaded {len(filtered_amenity_data)} amenity records via COPY")
+            logger.info(f"✅ Loaded {len(amenity_data)} amenity records via COPY with upsert")
 
         except Exception as e:
             if 'pg_conn' in locals():
@@ -866,12 +897,12 @@ class BatchDataLoader:
             raise
 
     def _load_performance_copy(self, performance_data: List[Dict[str, Any]]) -> None:
-        """Load performance data using PostgreSQL COPY command."""
+        """Load performance data using PostgreSQL COPY command with temp table upsert."""
         if not performance_data:
             return
 
         logger.info(
-            f"Loading {len(performance_data)} performance records using COPY command..."
+            f"Loading {len(performance_data)} performance records using COPY with temp table upsert..."
         )
 
         # Create a separate connection for this thread to avoid conflicts
@@ -885,6 +916,30 @@ class BatchDataLoader:
             pg_conn = psycopg2.connect(conn_string, connect_timeout=30)
             pg_conn.autocommit = False
             cursor = pg_conn.cursor()
+
+            # Create temp table if it doesn't exist
+            cursor.execute("""
+                CREATE TEMP TABLE IF NOT EXISTS property_performance_temp (
+                    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+                    property_id UUID NOT NULL,
+                    revenue NUMERIC,
+                    revenue_potential NUMERIC,
+                    adr NUMERIC,
+                    cleaning_fee NUMERIC,
+                    occupancy NUMERIC,
+                    available_nights INTEGER,
+                    total_reviews INTEGER,
+                    rating NUMERIC,
+                    property_reviews_count INTEGER,
+                    high_season_reviews INTEGER,
+                    high_season_label VARCHAR(50),
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+
+            # Clear temp table
+            cursor.execute("TRUNCATE TABLE property_performance_temp")
 
             # Create CSV-like data in memory
             columns = [
@@ -932,17 +987,23 @@ class BatchDataLoader:
 
             csv_buffer.seek(0)
 
-            # Execute COPY command
+            # Execute COPY command to temp table
             cursor.copy_expert(
-                f"COPY property_performance ({', '.join(columns)}) FROM STDIN WITH (FORMAT text, NULL '\\N', DELIMITER E'\\t')",
+                f"COPY property_performance_temp ({', '.join(columns)}) FROM STDIN WITH (FORMAT text, NULL '\\N', DELIMITER E'\\t')",
                 csv_buffer,
             )
+
+            # Call upsert function to move data from temp to main table
+            cursor.execute("SELECT * FROM upsert_property_performance_from_temp()")
+            inserted, updated = cursor.fetchone()
+
+            logger.info(f"  Performance records upserted: {inserted} inserted, {updated} updated")
 
             pg_conn.commit()
             cursor.close()
             pg_conn.close()
             logger.info(
-                f"✅ Loaded {len(performance_data)} performance records via COPY"
+                f"✅ Loaded {len(performance_data)} performance records via COPY with upsert"
             )
 
         except Exception as e:
@@ -961,7 +1022,10 @@ class BatchDataLoader:
         Load all data from the cleaned CSV file into the database.
 
         Uses the most efficient loading strategy available:
-        1. PostgreSQL COPY command (if DB credentials available)
+        1. PostgreSQL COPY with temp tables (if DB credentials available):
+           - COPY data into temp tables (fast bulk load)
+           - INSERT...ON CONFLICT to upsert from temp to main tables
+           - Provides both speed and proper duplicate handling
         2. Supabase batch insert API (fallback)
         """
         # Check if cleaned data file exists
@@ -973,7 +1037,7 @@ class BatchDataLoader:
 
         logger.info(f"Loading data from {self.cleaned_data_path}")
         logger.info(
-            f"Strategy: {'PostgreSQL COPY' if self.use_copy_command else 'Supabase Batch Insert'}"
+            f"Strategy: {'PostgreSQL COPY with Temp Tables (upsert enabled)' if self.use_copy_command else 'Supabase Batch Insert'}"
         )
         logger.info(f"Batch size: {self.batch_size}")
 

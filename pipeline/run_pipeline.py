@@ -4,11 +4,14 @@ Main pipeline script for the Short-Term Rental System.
 This script orchestrates the complete data pipeline:
 1. Clean raw CSV data
 2. Load cleaned data into the database
+3. Calculate investment scores for properties
 
 Usage:
-    python pipeline/run_pipeline.py              # Run full pipeline
+    python pipeline/run_pipeline.py              # Run full pipeline (clean + load)
+    python pipeline/run_pipeline.py --score       # Run full pipeline with scoring
     python pipeline/run_pipeline.py --clean-only # Run cleaning only
     python pipeline/run_pipeline.py --load-only  # Run loading only
+    python pipeline/run_pipeline.py --score-only # Run scoring only
     python pipeline/run_pipeline.py --load-only --limit 10  # Load only 10 properties
 """
 
@@ -20,6 +23,7 @@ from typing import Optional
 from clean_data import main as clean_main
 from load_data import DataLoader
 from batch_load_data import BatchDataLoader
+from score_properties import InvestmentScorer
 
 
 # Configure logging
@@ -52,6 +56,30 @@ def run_clean_step() -> bool:
             return False
     except Exception as e:
         logger.error(f"❌ Data cleaning failed: {e}")
+        return False
+
+
+def run_score_step(limit: Optional[int] = None) -> bool:
+    """
+    Run the property scoring step.
+
+    Args:
+        limit: Optional limit on number of properties to score (for testing).
+
+    Returns:
+        True if successful, False otherwise.
+    """
+    logger.info("=" * 60)
+    logger.info("STEP 3: Calculating Investment Scores")
+    logger.info("=" * 60)
+
+    try:
+        scorer = InvestmentScorer(limit=limit)
+        scorer.run()
+        logger.info("✅ Property scoring completed successfully")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Property scoring failed: {e}")
         return False
 
 
@@ -150,6 +178,16 @@ def main():
         default=4,
         help="Number of parallel workers for batch loading (default: 4)",
     )
+    parser.add_argument(
+        "--score-only",
+        action="store_true",
+        help="Run only the property scoring step",
+    )
+    parser.add_argument(
+        "--score",
+        action="store_true",
+        help="Run scoring after loading data",
+    )
 
     args = parser.parse_args()
 
@@ -157,11 +195,20 @@ def main():
     if args.clean_only and args.load_only:
         logger.error("Cannot specify both --clean-only and --load-only")
         return 1
+    if args.clean_only and args.score_only:
+        logger.error("Cannot specify both --clean-only and --score-only")
+        return 1
+    if args.load_only and args.score_only:
+        logger.error("Cannot specify both --load-only and --score-only")
+        return 1
 
     success = True
 
     # Run pipeline based on arguments
-    if args.load_only:
+    if args.score_only:
+        # Score only
+        success = run_score_step(limit=args.limit)
+    elif args.load_only:
         # Load only
         success = run_load_step(
             args.data_path,
@@ -172,7 +219,7 @@ def main():
             workers=args.workers,
         )
     else:
-        # Clean (and optionally load)
+        # Clean (and optionally load and score)
         clean_success = run_clean_step()
         if not clean_success:
             return 1
@@ -190,6 +237,12 @@ def main():
             if not load_success:
                 return 1
 
+            # Run scoring if requested
+            if args.score:
+                score_success = run_score_step(limit=args.limit)
+                if not score_success:
+                    return 1
+
     # Summary
     logger.info("=" * 60)
     logger.info("Pipeline Summary")
@@ -199,8 +252,13 @@ def main():
         logger.info("✅ Data cleaning completed")
     elif args.load_only:
         logger.info("✅ Data loading completed")
+    elif args.score_only:
+        logger.info("✅ Property scoring completed")
     else:
-        logger.info("✅ Full pipeline completed successfully")
+        if args.score:
+            logger.info("✅ Full pipeline (clean + load + score) completed successfully")
+        else:
+            logger.info("✅ Full pipeline (clean + load) completed successfully")
 
     logger.info("=" * 60)
 

@@ -149,12 +149,14 @@ run_pipeline() {
     echo "  1) Run full pipeline (clean + load)"
     echo "  2) Run data cleaning step only"
     echo "  3) Run data loading step only"
-    echo "  4) Run full pipeline with batch loading (fast)"
-    echo "  5) Run data loading with batch mode only"
-    echo "  6) Run with custom options"
+    echo "  4) Run property scoring only"
+    echo "  5) Run full pipeline with batch loading (fast)"
+    echo "  6) Run data loading with batch mode only"
+    echo "  7) Run full pipeline with scoring (clean + load + score)"
+    echo "  8) Run with custom options"
     echo "  0) Back to main menu"
     echo ""
-    read -p "Enter your choice [0-6]: " pipeline_choice
+    read -p "Enter your choice [0-8]: " pipeline_choice
 
     case $pipeline_choice in
         1)
@@ -326,7 +328,80 @@ manage_containers() {
                 print_success "Containers and volumes removed!"
             else
                 print_info "Operation cancelled."
+                fi
+            ;;
+        4)
+            echo ""
+            read -p "Enter limit (number of properties, or leave empty for all): " limit
+            if [ -z "$limit" ]; then
+                print_info "Running property scoring only..."
+                $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --score-only
+            else
+                print_info "Running property scoring only (limit: $limit properties)..."
+                $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --score-only --limit "$limit"
             fi
+            ;;
+        5)
+            echo ""
+            read -p "Enter limit (number of properties, or leave empty for all): " limit
+            read -p "Enter batch size (default: 500, press Enter for default): " batch_size
+            if [ -z "$limit" ]; then
+                if [ -z "$batch_size" ]; then
+                    print_info "Running full pipeline with batch loading..."
+                    $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --batch
+                else
+                    print_info "Running full pipeline with batch loading (batch size: $batch_size)..."
+                    $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --batch --batch-size "$batch_size"
+                fi
+            else
+                if [ -z "$batch_size" ]; then
+                    print_info "Running full pipeline with batch loading (limit: $limit properties)..."
+                    $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --batch --limit "$limit"
+                else
+                    print_info "Running full pipeline with batch loading (limit: $limit, batch size: $batch_size)..."
+                    $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --batch --limit "$limit" --batch-size "$batch_size"
+                fi
+            fi
+            ;;
+        6)
+            echo ""
+            read -p "Enter limit (number of properties, or leave empty for all): " limit
+            read -p "Enter batch size (default: 500, press Enter for default): " batch_size
+            if [ -z "$limit" ]; then
+                if [ -z "$batch_size" ]; then
+                    print_info "Running data loading with batch mode only..."
+                    $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --load-only --batch
+                else
+                    print_info "Running data loading with batch mode only (batch size: $batch_size)..."
+                    $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --load-only --batch --batch-size "$batch_size"
+                fi
+            else
+                if [ -z "$batch_size" ]; then
+                    print_info "Running data loading with batch mode only (limit: $limit properties)..."
+                    $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --load-only --batch --limit "$limit"
+                else
+                    print_info "Running data loading with batch mode only (limit: $limit, batch size: $batch_size)..."
+                    $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --load-only --batch --limit "$limit" --batch-size "$batch_size"
+                fi
+            fi
+            ;;
+        7)
+            echo ""
+            read -p "Enter limit (number of properties, or leave empty for all): " limit
+            if [ -z "$limit" ]; then
+                print_info "Running full pipeline with scoring..."
+                $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --score
+            else
+                print_info "Running full pipeline with scoring (limit: $limit properties)..."
+                $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --score --limit "$limit"
+            fi
+            ;;
+        8)
+            echo ""
+            print_info "Enter custom pipeline options..."
+            read -p "Options (e.g., --batch --limit 100 --batch-size 500 --score): " custom_options
+            print_info "Running pipeline with custom options: $custom_options"
+            $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py $custom_options
             ;;
         0)
             return

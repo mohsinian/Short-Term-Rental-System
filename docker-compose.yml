@@ -7,5 +7,7 @@ services:
       - PYTHONPATH=/app
     volumes:
       - .:/app
-    # Default command
-    command: python --version
+    # Default command - run the interactive CLI
+    command: bash scripts/cli.sh
+    stdin_open: true
+    tty: true

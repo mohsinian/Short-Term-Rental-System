@@ -31,6 +31,23 @@ A data pipeline system for managing short-term rental property data with optimiz
    SUPABASE_DB_CONNECTION_STRING=postgresql://postgres.xxxxx:password@aws-0-us-east-1.pooler.supabase.com:6543/postgres
    ```
 
+### Interactive CLI (Recommended)
+
+The easiest way to use this system is through the interactive CLI tool:
+
+```bash
+./scripts/cli.sh
+```
+
+This will launch an interactive menu where you can:
+- 🗄️ Run database migrations (run, status, dry-run, test connection)
+- 📊 Run the data pipeline (full, clean only, load only, batch mode)
+- 🏗️ Build Docker images
+- 📈 Check system status
+- 🐳 Manage Docker containers
+
+The CLI provides a user-friendly interface with prompts for options like limits and batch sizes.
+
 ### Running the Pipeline
 
 #### Standard Mode (Row-by-Row)
@@ -55,6 +72,7 @@ A data pipeline system for managing short-term rental property data with optimiz
 ```
 
 ## Documentation
+- [Interactive CLI Guide](docs/CLI_GUIDE.md) - Complete guide for using the interactive CLI tool
 - [Quick Start Guide](docs/QUICK_START_BATCH_LOADING.md) - Quick reference for batch loading
 
 ## Project Structure
@@ -75,6 +93,7 @@ A data pipeline system for managing short-term rental property data with optimiz
 │   └── run_pipeline.py            # Pipeline orchestrator
 ├── scripts/                       # Shell scripts
 │   ├── build.sh
+│   ├── cli.sh                     # Interactive CLI tool
 │   ├── migrate.sh
 │   ├── pipeline.sh                # Pipeline runner
 │   └── run.sh
@@ -83,6 +102,7 @@ A data pipeline system for managing short-term rental property data with optimiz
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
+├── cli.sh                        # Interactive CLI launcher
 └── sample.env
 ```
 

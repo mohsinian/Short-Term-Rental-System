@@ -30,12 +30,11 @@ import json
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Any
 from pathlib import Path
 
 import pandas as pd
 import psycopg2
-from psycopg2.extras import execute_batch
 from dotenv import load_dotenv
 from supabase import Client
 
@@ -530,8 +529,6 @@ class BatchDataLoader:
 
         logger.info(f"Loading {len(property_data)} properties using batch insert...")
 
-        inserted_count = 0
-        updated_count = 0
 
         try:
             # Process in batches
@@ -1014,6 +1011,354 @@ class BatchDataLoader:
             raise
 
     # ============================================================================
+    # PROPERTY REVIEWS - Batch Loading
+    # ============================================================================
+
+    def _prepare_property_reviews_data(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
+        """Prepare property reviews data for batch insertion."""
+        column_mapping = {
+            "total_months": "total_months",
+            "missing_months": "missing_months",
+            "avg_reviews_per_month": "avg_reviews_per_month",
+            "review_pct_stayed_with_kids": "review_pct_stayed_with_kids",
+            "review_pct_group_trip": "review_pct_group_trip",
+            "review_pct_stayed_with_a_pet": "review_pct_stayed_with_a_pet",
+        }
+
+        property_reviews_data = []
+
+        for _, row in df.iterrows():
+            property_id = row.get("property_id")
+            if property_id not in self.property_id_map:
+                continue
+
+            property_uuid = self.property_id_map[property_id]
+
+            reviews_data = {"property_id": property_uuid}
+
+            for db_col, csv_col in column_mapping.items():
+                if csv_col in df.columns:
+                    val = row[csv_col]
+                    if not pd.isna(val):
+                        # Convert float to int for integer columns
+                        if db_col in ["total_months", "missing_months"]:
+                            reviews_data[db_col] = int(val) if isinstance(val, float) else val
+                        else:
+                            reviews_data[db_col] = val
+
+            if not reviews_data or len(reviews_data) == 1:  # Only has property_id
+                continue
+
+            property_reviews_data.append(reviews_data)
+
+        return property_reviews_data
+
+    def _load_property_reviews_batch(self, property_reviews_data: List[Dict[str, Any]]) -> None:
+        """Load property reviews using Supabase batch insert API."""
+        if not property_reviews_data:
+            return
+
+        logger.info(
+            f"Loading {len(property_reviews_data)} property reviews using batch insert..."
+        )
+
+        try:
+            # Process in batches
+            for i in range(0, len(property_reviews_data), self.batch_size):
+                batch = property_reviews_data[i : i + self.batch_size]
+
+                # Use upsert
+                self.client.table("property_reviews").upsert(
+                    batch, on_conflict="property_id", ignore_duplicates=False
+                ).execute()
+
+                logger.info(
+                    f"  Processed batch {i // self.batch_size + 1}: {len(batch)} records"
+                )
+
+            logger.info(f"✅ Loaded {len(property_reviews_data)} property reviews")
+
+        except Exception as e:
+            logger.error(f"Error loading property reviews in batch: {e}")
+            raise
+
+    def _load_property_reviews_copy(self, property_reviews_data: List[Dict[str, Any]]) -> None:
+        """Load property reviews using PostgreSQL COPY command with temp table upsert."""
+        if not property_reviews_data:
+            return
+
+        logger.info(
+            f"Loading {len(property_reviews_data)} property reviews using COPY with temp table upsert..."
+        )
+
+        # Create a separate connection for this thread to avoid conflicts
+        conn_string = os.environ.get("SUPABASE_DB_CONNECTION_STRING")
+        if not conn_string:
+            logger.error("SUPABASE_DB_CONNECTION_STRING not found")
+            raise ValueError("SUPABASE_DB_CONNECTION_STRING environment variable is required")
+
+        try:
+            # Create separate connection for parallel execution
+            pg_conn = psycopg2.connect(conn_string, connect_timeout=30)
+            pg_conn.autocommit = False
+            cursor = pg_conn.cursor()
+
+            # Create temp table if it doesn't exist
+            cursor.execute("""
+                CREATE TEMP TABLE IF NOT EXISTS property_reviews_temp (
+                    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+                    property_id UUID NOT NULL UNIQUE,
+                    total_months INTEGER,
+                    missing_months INTEGER,
+                    avg_reviews_per_month NUMERIC,
+                    review_pct_stayed_with_kids NUMERIC,
+                    review_pct_group_trip NUMERIC,
+                    review_pct_stayed_with_a_pet NUMERIC,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+
+            # Clear temp table
+            cursor.execute("TRUNCATE TABLE property_reviews_temp")
+
+            # Create CSV-like data in memory
+            columns = [
+                "property_id",
+                "total_months",
+                "missing_months",
+                "avg_reviews_per_month",
+                "review_pct_stayed_with_kids",
+                "review_pct_group_trip",
+                "review_pct_stayed_with_a_pet",
+            ]
+
+            csv_buffer = io.StringIO()
+            for review in property_reviews_data:
+                values = []
+                for col in columns:
+                    val = review.get(col)
+                    if val is None or pd.isna(val):
+                        values.append("\\N")
+                    elif isinstance(val, bool):
+                        values.append("t" if val else "f")
+                    elif isinstance(val, (int, float)):
+                        values.append(str(val))
+                    else:
+                        str_val = (
+                            str(val)
+                            .replace("\\", "\\\\")
+                            .replace("\n", "\\n")
+                            .replace("\t", "\\t")
+                        )
+                        values.append(str_val)
+                csv_buffer.write("\t".join(values) + "\n")
+
+            csv_buffer.seek(0)
+
+            # Execute COPY command to temp table
+            cursor.copy_expert(
+                f"COPY property_reviews_temp ({', '.join(columns)}) FROM STDIN WITH (FORMAT text, NULL '\\N', DELIMITER E'\\t')",
+                csv_buffer,
+            )
+
+            # Call upsert function to move data from temp to main table
+            cursor.execute("SELECT * FROM upsert_property_reviews_from_temp()")
+            inserted, updated = cursor.fetchone()
+
+            logger.info(f"  Property reviews upserted: {inserted} inserted, {updated} updated")
+
+            pg_conn.commit()
+            cursor.close()
+            pg_conn.close()
+            logger.info(
+                f"✅ Loaded {len(property_reviews_data)} property reviews via COPY with upsert"
+            )
+
+        except Exception as e:
+            if 'pg_conn' in locals():
+                pg_conn.rollback()
+                pg_conn.close()
+            logger.error(f"Error loading property reviews via COPY: {e}")
+            raise
+
+    # ============================================================================
+    # MARKET BENCHMARKS - Batch Loading
+    # ============================================================================
+
+    def _prepare_market_benchmarks_data(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
+        """Prepare market benchmarks data by calculating averages from properties."""
+        from datetime import date
+
+        benchmarks_data = []
+
+        # Group by market and bedroom count
+        if "market" not in df.columns or "bedrooms" not in df.columns:
+            logger.warning("market or bedrooms column not found, skipping market benchmarks")
+            return benchmarks_data
+
+        # Group by market and bedroom count
+        grouped = df.groupby(["market", "bedrooms"])
+
+        for (market_name, bedroom_count), group in grouped:
+            # Get market ID
+            parts = market_name.split("_")
+            state_name = parts[-1] if len(parts) > 1 and len(parts[-1]) == 2 else None
+            clean_market_name = " ".join(parts[:-1]) if state_name else market_name
+            cache_key = f"{clean_market_name}|{state_name or 'NULL'}"
+            market_id = self.market_id_map.get(cache_key)
+
+            if not market_id:
+                continue
+
+            # Calculate averages from Revenue, Occupancy, ADR columns
+            revenue_values = group["Revenue"].dropna()
+            occupancy_values = group["Occupancy"].dropna()
+            adr_values = group["ADR"].dropna()
+
+            if revenue_values.empty and occupancy_values.empty and adr_values.empty:
+                continue
+
+            benchmark_data = {
+                "market_id": market_id,
+                "bedroom_count": int(bedroom_count) if pd.notna(bedroom_count) else None,
+                "avg_revenue": float(revenue_values.mean()) if not revenue_values.empty else None,
+                "avg_occupancy": float(occupancy_values.mean()) if not occupancy_values.empty else None,
+                "avg_adr": float(adr_values.mean()) if not adr_values.empty else None,
+                "report_date": date.today(),
+            }
+
+            benchmarks_data.append(benchmark_data)
+
+        return benchmarks_data
+
+    def _load_market_benchmarks_batch(self, market_benchmarks_data: List[Dict[str, Any]]) -> None:
+        """Load market benchmarks using Supabase batch insert API."""
+        if not market_benchmarks_data:
+            return
+
+        logger.info(
+            f"Loading {len(market_benchmarks_data)} market benchmarks using batch insert..."
+        )
+
+        try:
+            # Process in batches
+            for i in range(0, len(market_benchmarks_data), self.batch_size):
+                batch = market_benchmarks_data[i : i + self.batch_size]
+
+                # Use upsert
+                self.client.table("market_benchmarks").upsert(
+                    batch,
+                    on_conflict="market_id,bedroom_count,report_date",
+                    ignore_duplicates=False,
+                ).execute()
+
+                logger.info(
+                    f"  Processed batch {i // self.batch_size + 1}: {len(batch)} records"
+                )
+
+            logger.info(f"✅ Loaded {len(market_benchmarks_data)} market benchmarks")
+
+        except Exception as e:
+            logger.error(f"Error loading market benchmarks in batch: {e}")
+            raise
+
+    def _load_market_benchmarks_copy(self, market_benchmarks_data: List[Dict[str, Any]]) -> None:
+        """Load market benchmarks using PostgreSQL COPY command with temp table upsert."""
+        if not market_benchmarks_data:
+            return
+
+        logger.info(
+            f"Loading {len(market_benchmarks_data)} market benchmarks using COPY with temp table upsert..."
+        )
+
+        # Create a separate connection for this thread to avoid conflicts
+        conn_string = os.environ.get("SUPABASE_DB_CONNECTION_STRING")
+        if not conn_string:
+            logger.error("SUPABASE_DB_CONNECTION_STRING not found")
+            raise ValueError("SUPABASE_DB_CONNECTION_STRING environment variable is required")
+
+        try:
+            # Create separate connection for parallel execution
+            pg_conn = psycopg2.connect(conn_string, connect_timeout=30)
+            pg_conn.autocommit = False
+            cursor = pg_conn.cursor()
+
+            # Create temp table if it doesn't exist
+            cursor.execute("""
+                CREATE TEMP TABLE IF NOT EXISTS market_benchmarks_temp (
+                    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+                    market_id UUID NOT NULL,
+                    bedroom_count INTEGER,
+                    avg_revenue NUMERIC,
+                    avg_occupancy NUMERIC,
+                    avg_adr NUMERIC,
+                    report_date DATE
+                )
+            """)
+
+            # Clear temp table
+            cursor.execute("TRUNCATE TABLE market_benchmarks_temp")
+
+            # Create CSV-like data in memory
+            columns = [
+                "market_id",
+                "bedroom_count",
+                "avg_revenue",
+                "avg_occupancy",
+                "avg_adr",
+                "report_date",
+            ]
+
+            csv_buffer = io.StringIO()
+            for benchmark in market_benchmarks_data:
+                values = []
+                for col in columns:
+                    val = benchmark.get(col)
+                    if val is None or pd.isna(val):
+                        values.append("\\N")
+                    elif isinstance(val, bool):
+                        values.append("t" if val else "f")
+                    elif isinstance(val, (int, float)):
+                        values.append(str(val))
+                    else:
+                        str_val = (
+                            str(val)
+                            .replace("\\", "\\\\")
+                            .replace("\n", "\\n")
+                            .replace("\t", "\\t")
+                        )
+                        values.append(str_val)
+                csv_buffer.write("\t".join(values) + "\n")
+
+            csv_buffer.seek(0)
+
+            # Execute COPY command to temp table
+            cursor.copy_expert(
+                f"COPY market_benchmarks_temp ({', '.join(columns)}) FROM STDIN WITH (FORMAT text, NULL '\\N', DELIMITER E'\\t')",
+                csv_buffer,
+            )
+
+            # Call upsert function to move data from temp to main table
+            cursor.execute("SELECT * FROM upsert_market_benchmarks_from_temp()")
+            inserted, updated = cursor.fetchone()
+
+            logger.info(f"  Market benchmarks upserted: {inserted} inserted, {updated} updated")
+
+            pg_conn.commit()
+            cursor.close()
+            pg_conn.close()
+            logger.info(
+                f"✅ Loaded {len(market_benchmarks_data)} market benchmarks via COPY with upsert"
+            )
+
+        except Exception as e:
+            if 'pg_conn' in locals():
+                pg_conn.rollback()
+                pg_conn.close()
+            logger.error(f"Error loading market benchmarks via COPY: {e}")
+            raise
+
+    # ============================================================================
     # MAIN LOADING ORCHESTRATION
     # ============================================================================
 
@@ -1132,15 +1477,41 @@ class BatchDataLoader:
                         logger.error(f"Error in parallel loading: {e}")
                         raise
 
+            # Load property reviews
+            logger.info("=" * 60)
+            logger.info("STEP 5: Loading property reviews")
+            logger.info("=" * 60)
+
+            property_reviews_data = self._prepare_property_reviews_data(df)
+            if property_reviews_data:
+                if self.use_copy_command:
+                    self._load_property_reviews_copy(property_reviews_data)
+                else:
+                    self._load_property_reviews_batch(property_reviews_data)
+
+            # Calculate and load market benchmarks
+            logger.info("=" * 60)
+            logger.info("STEP 6: Calculating and loading market benchmarks")
+            logger.info("=" * 60)
+
+            market_benchmarks_data = self._prepare_market_benchmarks_data(df)
+            if market_benchmarks_data:
+                if self.use_copy_command:
+                    self._load_market_benchmarks_copy(market_benchmarks_data)
+                else:
+                    self._load_market_benchmarks_batch(market_benchmarks_data)
+
             logger.info("=" * 60)
             logger.info("✅ All data loaded successfully!")
             logger.info("=" * 60)
-            logger.info(f"Summary:")
+            logger.info("Summary:")
             logger.info(f"  - Markets: {len(self.market_id_map)}")
             logger.info(f"  - Hosts: {len(self.host_id_map)}")
             logger.info(f"  - Properties: {len(self.property_id_map)}")
             logger.info(f"  - Amenities: {len(amenity_data)}")
             logger.info(f"  - Performance: {len(performance_data)}")
+            logger.info(f"  - Property Reviews: {len(property_reviews_data)}")
+            logger.info(f"  - Market Benchmarks: {len(market_benchmarks_data)}")
 
         except Exception as e:
             logger.error(f"Error during data loading: {e}")

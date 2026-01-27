@@ -180,12 +180,13 @@ Available endpoints include:
 
 ```
 .
-├── api/                           # FastAPI backend
+├── api/                           # FastAPI backend (Production Ready)
 │   ├── __init__.py
 │   ├── main.py                    # FastAPI application
 │   ├── models.py                  # Pydantic models
 │   ├── database.py                 # Database query functions
-│   ├── Dockerfile                  # API Docker configuration
+│   ├── Dockerfile                  # API Docker configuration (Production)
+│   ├── requirements.txt            # API-only dependencies
 │   └── routes/                    # API route handlers
 │       ├── __init__.py
 │       ├── health.py               # Health check endpoint
@@ -199,7 +200,7 @@ Available endpoints include:
 ├── migrations/                     # Database migrations
 │   ├── 001_initial_schema.sql
 │   └── 002_add_market_uniqueness.sql
-├── pipeline/                      # Data processing scripts
+├── pipeline/                      # Data processing scripts (Local Only)
 │   ├── batch_load_data.py          # Optimized batch loader (NEW!)
 │   ├── clean_data.py               # Data cleaning
 │   ├── load_data.py               # Original row-by-row loader
@@ -212,11 +213,87 @@ Available endpoints include:
 │   └── run.sh                   # Run Docker services
 ├── src/                          # Source code
 │   └── database/                 # Database utilities
-├── Dockerfile                     # Pipeline Docker configuration
+├── Dockerfile                     # Pipeline Docker configuration (Local Development Only)
 ├── docker-compose.yml              # Docker Compose configuration
-├── requirements.txt               # Python dependencies
+├── .dockerignore                  # Docker build exclusions
+├── requirements.txt               # All Python dependencies (API + Pipeline)
 └── sample.env                    # Environment variables template
 ```
+
+## Docker Deployment
+
+### Architecture Overview
+
+The project uses a dual-Docker setup for optimized deployment:
+
+- **API Service** ([`api/Dockerfile`](api/Dockerfile:1)): Production-ready FastAPI backend
+  - Uses [`api/requirements.txt`](api/requirements.txt:1) with minimal dependencies
+  - Optimized for cloud deployment
+  - No pipeline dependencies (pandas, numpy) for smaller image size
+  - Deployed to cloud infrastructure
+
+- **Pipeline Service** ([`Dockerfile`](Dockerfile:1)): Local development only
+  - Uses [`requirements.txt`](requirements.txt:1) with all dependencies
+  - Includes pipeline dependencies (pandas, numpy)
+  - Used locally for data processing and ETL
+  - NOT deployed to cloud
+
+### Production Deployment (API Only)
+
+For cloud deployment, only the API service is deployed:
+
+```bash
+# Build API image
+docker build -f api/Dockerfile -t short-term-rental-api:latest .
+
+# Run API container
+docker run -d \
+  --name short-term-rental-api \
+  -p 8000:8000 \
+  --env-file .env \
+  --restart unless-stopped \
+  short-term-rental-api:latest
+```
+
+### Local Development
+
+For local development with both services:
+
+```bash
+# Build all services
+./scripts/build.sh all
+
+# Start all services
+./scripts/run.sh all detached
+
+# Or use docker-compose directly
+docker-compose up -d
+```
+
+### Key Differences
+
+| Feature | API Service | Pipeline Service |
+|---------|-------------|------------------|
+| Deployment | Cloud & Local | Local Only |
+| Dependencies | API-only (fastapi, uvicorn, pydantic, psycopg2) | All (API + pandas, numpy) |
+| Dockerfile | [`api/Dockerfile`](api/Dockerfile:1) | [`Dockerfile`](Dockerfile:1) |
+| Requirements | [`api/requirements.txt`](api/requirements.txt:1) | [`requirements.txt`](requirements.txt:1) |
+| Image Size | Smaller (~100MB) | Larger (~500MB) |
+| Use Case | Production API | Data processing & ETL |
+
+### Health Checks
+
+The API service includes health checks:
+
+```bash
+curl http://localhost:8000/api/v1/health
+```
+
+Health check configuration in [`docker-compose.yml`](docker-compose.yml:1):
+- Interval: 30 seconds
+- Timeout: 10 seconds
+- Retries: 3
+- Start period: 40 seconds
 
 ## Database Schema
 

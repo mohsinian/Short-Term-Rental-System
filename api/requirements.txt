@@ -1,0 +1,16 @@
+# API-only dependencies for production deployment
+# This file contains only the dependencies needed for the FastAPI backend
+
+# API framework
+fastapi>=0.110.0
+uvicorn>=0.29.0
+
+# Data validation
+pydantic>=2.7.0
+
+# Database connection (PostgreSQL via psycopg2)
+psycopg2-binary>=2.9.9
+supabase>=2.4.0
+
+# Environment variables
+python-dotenv>=1.0.1

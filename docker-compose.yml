@@ -1,7 +1,10 @@
 services:
-  # Service for running the pipeline scripts
+  # Service for running the pipeline scripts (local development only)
+  # This service is NOT deployed to cloud - only used locally for data processing
   pipeline:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     env_file: .env
     environment:
       - PYTHONPATH=/app
@@ -11,8 +14,10 @@ services:
     command: bash scripts/cli.sh
     stdin_open: true
     tty: true
+    restart: "no"
 
   # Service for running the FastAPI backend
+  # This service IS deployed to cloud for production API
   api:
     build:
       context: .
@@ -22,8 +27,16 @@ services:
       - PYTHONPATH=/app
     ports:
       - "8000:8000"
-    # The API service doesn't need volume mounts for production deployment
-    # For local development, you can uncomment the following line:
+    # Production: No volume mounts, no reload flag
+    # For local development with hot reload, uncomment the following:
     # volumes:
     #   - .:/app
-    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    # command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

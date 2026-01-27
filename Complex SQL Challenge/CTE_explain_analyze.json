@@ -1,0 +1,125 @@
+[
+  {
+    "QUERY PLAN": "Incremental Sort  (cost=754.59..829.60 rows=61 width=890) (actual time=10.291..10.373 rows=76 loops=1)"
+  },
+  {
+    "QUERY PLAN": "  Sort Key: m.name, p.bedrooms, (row_number() OVER (?))"
+  },
+  {
+    "QUERY PLAN": "  Presorted Key: m.name"
+  },
+  {
+    "QUERY PLAN": "  Full-sort Groups: 2  Sort Method: quicksort  Average Memory: 33kB  Peak Memory: 33kB"
+  },
+  {
+    "QUERY PLAN": "  ->  Nested Loop  (cost=739.76..827.70 rows=61 width=890) (actual time=9.722..10.258 rows=76 loops=1)"
+  },
+  {
+    "QUERY PLAN": "        Join Filter: (m.id = p.market_id)"
+  },
+  {
+    "QUERY PLAN": "        Rows Removed by Join Filter: 152"
+  },
+  {
+    "QUERY PLAN": "        ->  Index Scan using idx_markets_name_state_unique on markets m  (cost=0.13..3.52 rows=6 width=532) (actual time=0.010..0.014 rows=3 loops=1)"
+  },
+  {
+    "QUERY PLAN": "        ->  Materialize  (cost=739.63..816.70 rows=61 width=237) (actual time=3.066..3.327 rows=76 loops=3)"
+  },
+  {
+    "QUERY PLAN": "              ->  Merge Join  (cost=739.63..816.40 rows=61 width=237) (actual time=9.193..9.917 rows=76 loops=1)"
+  },
+  {
+    "QUERY PLAN": "                    Merge Cond: ((p.market_id = mba.market_id) AND (p.bedrooms = mba.bedrooms))"
+  },
+  {
+    "QUERY PLAN": "                    ->  WindowAgg  (cost=409.37..454.91 rows=2025 width=133) (actual time=5.909..6.594 rows=76 loops=1)"
+  },
+  {
+    "QUERY PLAN": "                          Run Condition: (row_number() OVER (?) <= 3)"
+  },
+  {
+    "QUERY PLAN": "                          ->  Sort  (cost=409.35..414.41 rows=2025 width=109) (actual time=5.896..6.160 rows=2025 loops=1)"
+  },
+  {
+    "QUERY PLAN": "                                Sort Key: p.market_id, p.bedrooms, pp.revenue DESC NULLS LAST"
+  },
+  {
+    "QUERY PLAN": "                                Sort Method: quicksort  Memory: 308kB"
+  },
+  {
+    "QUERY PLAN": "                                ->  Hash Join  (cost=80.56..298.14 rows=2025 width=109) (actual time=0.894..2.312 rows=2025 loops=1)"
+  },
+  {
+    "QUERY PLAN": "                                      Hash Cond: (p.id = pp.property_id)"
+  },
+  {
+    "QUERY PLAN": "                                      ->  Seq Scan on properties p  (cost=0.00..212.25 rows=2025 width=102) (actual time=0.019..0.888 rows=2025 loops=1)"
+  },
+  {
+    "QUERY PLAN": "                                            Filter: (bedrooms IS NOT NULL)"
+  },
+  {
+    "QUERY PLAN": "                                      ->  Hash  (cost=55.25..55.25 rows=2025 width=39) (actual time=0.862..0.863 rows=2025 loops=1)"
+  },
+  {
+    "QUERY PLAN": "                                            Buckets: 2048  Batches: 1  Memory Usage: 160kB"
+  },
+  {
+    "QUERY PLAN": "                                            ->  Seq Scan on property_performance pp  (cost=0.00..55.25 rows=2025 width=39) (actual time=0.009..0.398 rows=2025 loops=1)"
+  },
+  {
+    "QUERY PLAN": "                                                  Filter: (revenue IS NOT NULL)"
+  },
+  {
+    "QUERY PLAN": "                    ->  Sort  (cost=330.25..330.34 rows=33 width=125) (actual time=3.277..3.281 rows=29 loops=1)"
+  },
+  {
+    "QUERY PLAN": "                          Sort Key: mba.market_id, mba.bedrooms"
+  },
+  {
+    "QUERY PLAN": "                          Sort Method: quicksort  Memory: 27kB"
+  },
+  {
+    "QUERY PLAN": "                          ->  Subquery Scan on mba  (cost=328.51..329.42 rows=33 width=125) (actual time=3.176..3.225 rows=29 loops=1)"
+  },
+  {
+    "QUERY PLAN": "                                ->  HashAggregate  (cost=328.51..329.09 rows=33 width=125) (actual time=3.174..3.219 rows=29 loops=1)"
+  },
+  {
+    "QUERY PLAN": "                                      Group Key: p_1.market_id, p_1.bedrooms"
+  },
+  {
+    "QUERY PLAN": "                                      Batches: 1  Memory Usage: 48kB"
+  },
+  {
+    "QUERY PLAN": "                                      ->  Hash Join  (cost=80.56..298.14 rows=2025 width=44) (actual time=0.928..2.244 rows=2025 loops=1)"
+  },
+  {
+    "QUERY PLAN": "                                            Hash Cond: (p_1.id = pp_1.property_id)"
+  },
+  {
+    "QUERY PLAN": "                                            ->  Seq Scan on properties p_1  (cost=0.00..212.25 rows=2025 width=37) (actual time=0.015..0.763 rows=2025 loops=1)"
+  },
+  {
+    "QUERY PLAN": "                                                  Filter: (bedrooms IS NOT NULL)"
+  },
+  {
+    "QUERY PLAN": "                                            ->  Hash  (cost=55.25..55.25 rows=2025 width=39) (actual time=0.838..0.839 rows=2025 loops=1)"
+  },
+  {
+    "QUERY PLAN": "                                                  Buckets: 2048  Batches: 1  Memory Usage: 160kB"
+  },
+  {
+    "QUERY PLAN": "                                                  ->  Seq Scan on property_performance pp_1  (cost=0.00..55.25 rows=2025 width=39) (actual time=0.009..0.382 rows=2025 loops=1)"
+  },
+  {
+    "QUERY PLAN": "                                                        Filter: (revenue IS NOT NULL)"
+  },
+  {
+    "QUERY PLAN": "Planning Time: 1.938 ms"
+  },
+  {
+    "QUERY PLAN": "Execution Time: 10.713 ms"
+  }
+]

@@ -227,3 +227,63 @@ $$ LANGUAGE plpgsql;
 COMMENT ON FUNCTION get_market_stats() IS 'Returns market statistics grouped by market and bedroom count for scoring calculations';
 COMMENT ON FUNCTION get_top_opportunities(limit_count INTEGER) IS 'Returns top investment opportunities sorted by total score';
 COMMENT ON FUNCTION get_undervalued_opportunities(limit_count INTEGER) IS 'Returns undervalued properties with strong fundamentals but below-average revenue performance';
+
+-- Function to get all properties with related data for scoring (batch query)
+CREATE OR REPLACE FUNCTION get_properties_for_scoring()
+RETURNS TABLE (
+    id UUID,
+    property_id VARCHAR,
+    title VARCHAR,
+    bedrooms NUMERIC,
+    market_id UUID,
+    is_guest_favorite BOOLEAN,
+    is_reliable_data BOOLEAN,
+    is_super_host BOOLEAN,
+    market_name VARCHAR,
+    revenue NUMERIC,
+    occupancy NUMERIC,
+    adr NUMERIC,
+    total_reviews INTEGER,
+    rating NUMERIC,
+    high_season_reviews INTEGER,
+    total_months INTEGER,
+    missing_months INTEGER,
+    avg_reviews_per_month NUMERIC,
+    amenities TEXT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        p.id,
+        p.property_id,
+        p.title,
+        p.bedrooms,
+        p.market_id,
+        p.is_guest_favorite,
+        p.is_reliable_data,
+        h.is_super_host,
+        m.name as market_name,
+        pp.revenue,
+        pp.occupancy,
+        pp.adr,
+        pp.total_reviews,
+        pp.rating,
+        pp.high_season_reviews,
+        pr.total_months,
+        pr.missing_months,
+        pr.avg_reviews_per_month,
+        CASE
+            WHEN pa.amenities IS NULL THEN NULL
+            ELSE pa.amenities #>> '{}'
+        END as amenities
+    FROM properties p
+    LEFT JOIN hosts h ON h.id = p.host_id
+    LEFT JOIN markets m ON m.id = p.market_id
+    LEFT JOIN property_performance pp ON pp.property_id = p.id
+    LEFT JOIN property_reviews pr ON pr.property_id = p.id
+    LEFT JOIN property_amenities pa ON pa.property_id = p.id
+    WHERE p.is_reliable_data = TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION get_properties_for_scoring() IS 'Returns all properties with related data for investment scoring calculations';

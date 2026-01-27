@@ -32,9 +32,11 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION
 # =============================================================================
 
+
 @dataclass
 class ScoringWeights:
     """Configurable weights for each scoring component"""
+
     revenue: float = 0.25
     occupancy: float = 0.15
     adr: float = 0.15
@@ -45,34 +47,42 @@ class ScoringWeights:
     market: float = 0.05
 
     def __post_init__(self):
-        total = (self.revenue + self.occupancy + self.adr + self.review +
-                 self.amenity + self.host + self.seasonal + self.market)
+        total = (
+            self.revenue
+            + self.occupancy
+            + self.adr
+            + self.review
+            + self.amenity
+            + self.host
+            + self.seasonal
+            + self.market
+        )
         if abs(total - 1.0) > 0.001:
             raise ValueError(f"Weights must sum to 1.0, got {total}")
 
 
 # High-value amenities based on revenue correlation research
 HIGH_VALUE_AMENITIES = {
-    'tier_1': {  # Highest revenue impact
-        'amenities': ['pool', 'hot tub', 'hot_tub', 'jacuzzi', 'sauna'],
-        'weight': 20
+    "tier_1": {  # Highest revenue impact
+        "amenities": ["pool", "hot tub", "hot_tub", "jacuzzi", "sauna"],
+        "weight": 20,
     },
-    'tier_2': {  # Strong revenue impact
-        'amenities': ['game room', 'arcade', 'pool table', 'theater', 'movie'],
-        'weight': 15
+    "tier_2": {  # Strong revenue impact
+        "amenities": ["game room", "arcade", "pool table", "theater", "movie"],
+        "weight": 15,
     },
-    'tier_3': {  # Moderate revenue impact
-        'amenities': ['fire pit', 'firepit', 'grill', 'bbq', 'ev charger'],
-        'weight': 10
+    "tier_3": {  # Moderate revenue impact
+        "amenities": ["fire pit", "firepit", "grill", "bbq", "ev charger"],
+        "weight": 10,
     },
-    'tier_4': {  # Standard premium amenities
-        'amenities': ['gym', 'exercise', 'view', 'waterfront', 'beach'],
-        'weight': 8
+    "tier_4": {  # Standard premium amenities
+        "amenities": ["gym", "exercise", "view", "waterfront", "beach"],
+        "weight": 8,
     },
-    'tier_5': {  # Family-friendly amenities
-        'amenities': ['crib', 'pack n play', 'high chair', 'playground'],
-        'weight': 5
-    }
+    "tier_5": {  # Family-friendly amenities
+        "amenities": ["crib", "pack n play", "high chair", "playground"],
+        "weight": 5,
+    },
 }
 
 
@@ -80,10 +90,11 @@ HIGH_VALUE_AMENITIES = {
 # SCORING FUNCTIONS
 # =============================================================================
 
+
 def calculate_revenue_score(
     property_revenue: Optional[float],
     market_avg_revenue: Optional[float],
-    market_max_revenue: Optional[float]
+    market_max_revenue: Optional[float],
 ) -> float:
     """
     Score based on revenue performance vs market average.
@@ -144,7 +155,7 @@ def calculate_occupancy_score(occupancy: Optional[float]) -> float:
 def calculate_adr_score(
     property_adr: Optional[float],
     market_avg_adr: Optional[float],
-    property_occupancy: Optional[float]
+    property_occupancy: Optional[float],
 ) -> float:
     """
     Score ADR positioning - balance between rate and occupancy.
@@ -171,7 +182,11 @@ def calculate_adr_score(
 
     # Adjust based on occupancy (reward high ADR + high occupancy)
     if property_occupancy is not None:
-        occ = property_occupancy if property_occupancy <= 1 else property_occupancy / 100.0
+        occ = (
+            property_occupancy
+            if property_occupancy <= 1
+            else property_occupancy / 100.0
+        )
         if adr_ratio >= 1.0 and occ >= 0.60:
             # Bonus for maintaining high rates with good occupancy
             base_score = min(100.0, base_score * (1 + (occ - 0.60) * 0.25))
@@ -185,7 +200,7 @@ def calculate_adr_score(
 def calculate_review_score(
     total_reviews: Optional[int],
     rating: Optional[float],
-    avg_reviews_per_month: Optional[float]
+    avg_reviews_per_month: Optional[float],
 ) -> float:
     """
     Combined score for review volume and quality.
@@ -247,12 +262,12 @@ def calculate_amenity_score(amenities_text: Optional[str]) -> float:
 
     amenities_lower = str(amenities_text).lower()
     total_points = 0
-    max_possible = sum(tier['weight'] for tier in HIGH_VALUE_AMENITIES.values())
+    max_possible = sum(tier["weight"] for tier in HIGH_VALUE_AMENITIES.values())
 
     for tier_name, tier_data in HIGH_VALUE_AMENITIES.items():
-        for amenity in tier_data['amenities']:
+        for amenity in tier_data["amenities"]:
             if amenity in amenities_lower:
-                total_points += tier_data['weight']
+                total_points += tier_data["weight"]
                 break  # Only count once per tier
 
     # Scale to 0-100
@@ -263,8 +278,7 @@ def calculate_amenity_score(amenities_text: Optional[str]) -> float:
 
 
 def calculate_host_score(
-    is_superhost: Optional[bool],
-    is_guest_favorite: Optional[bool]
+    is_superhost: Optional[bool], is_guest_favorite: Optional[bool]
 ) -> float:
     """
     Score based on host status indicators.
@@ -288,7 +302,7 @@ def calculate_seasonal_score(
     total_months: Optional[int],
     missing_months: Optional[int],
     high_season_reviews: Optional[int],
-    total_reviews: Optional[int]
+    total_reviews: Optional[int],
 ) -> float:
     """
     Score based on seasonal stability and consistency.
@@ -304,7 +318,11 @@ def calculate_seasonal_score(
         score = consistency_score * 0.5
 
     # Seasonal distribution component (50% of score)
-    if high_season_reviews is not None and total_reviews is not None and total_reviews > 0:
+    if (
+        high_season_reviews is not None
+        and total_reviews is not None
+        and total_reviews > 0
+    ):
         # Ideal: high season accounts for 25-40% of reviews (roughly proportional)
         high_season_ratio = high_season_reviews / total_reviews
         if 0.20 <= high_season_ratio <= 0.45:
@@ -326,7 +344,7 @@ def calculate_seasonal_score(
 def calculate_market_score(
     market_avg_occupancy: Optional[float],
     market_avg_revenue: Optional[float],
-    property_count_in_category: Optional[int]
+    property_count_in_category: Optional[int],
 ) -> float:
     """
     Score the overall market strength.
@@ -341,7 +359,11 @@ def calculate_market_score(
 
     # Market occupancy health (40%)
     if market_avg_occupancy is not None:
-        occ = market_avg_occupancy if market_avg_occupancy <= 1 else market_avg_occupancy / 100.0
+        occ = (
+            market_avg_occupancy
+            if market_avg_occupancy <= 1
+            else market_avg_occupancy / 100.0
+        )
         if occ >= 0.70:
             occ_score = 100.0
         elif occ >= 0.60:
@@ -393,9 +415,11 @@ def calculate_market_score(
 # COMPOSITE SCORING & TIER ASSIGNMENT
 # =============================================================================
 
+
 @dataclass
 class PropertyScore:
     """Complete scoring result for a property"""
+
     property_id: str
     revenue_score: float
     occupancy_score: float
@@ -408,7 +432,7 @@ class PropertyScore:
     total_score: float
     percentile_rank: Optional[float] = None
     is_top_opportunity: bool = False
-    opportunity_tier: str = 'BRONZE'
+    opportunity_tier: str = "BRONZE"
 
 
 def calculate_total_score(
@@ -420,27 +444,29 @@ def calculate_total_score(
     host_score: float,
     seasonal_score: float,
     market_score: float,
-    weights: Optional[ScoringWeights] = None
+    weights: Optional[ScoringWeights] = None,
 ) -> float:
     """Calculate weighted composite score"""
     if weights is None:
         weights = ScoringWeights()
 
     total = (
-        revenue_score * weights.revenue +
-        occupancy_score * weights.occupancy +
-        adr_score * weights.adr +
-        review_score * weights.review +
-        amenity_score * weights.amenity +
-        host_score * weights.host +
-        seasonal_score * weights.seasonal +
-        market_score * weights.market
+        revenue_score * weights.revenue
+        + occupancy_score * weights.occupancy
+        + adr_score * weights.adr
+        + review_score * weights.review
+        + amenity_score * weights.amenity
+        + host_score * weights.host
+        + seasonal_score * weights.seasonal
+        + market_score * weights.market
     )
 
     return round(total, 2)
 
 
-def assign_opportunity_tier(total_score: float, percentile: Optional[float] = None) -> str:
+def assign_opportunity_tier(
+    total_score: float, percentile: Optional[float] = None
+) -> str:
     """
     Assign investment opportunity tier based on score and percentile.
 
@@ -452,30 +478,33 @@ def assign_opportunity_tier(total_score: float, percentile: Optional[float] = No
     """
     if percentile is not None:
         if percentile >= 95 or total_score >= 85:
-            return 'PLATINUM'
+            return "PLATINUM"
         elif percentile >= 85 or total_score >= 75:
-            return 'GOLD'
+            return "GOLD"
         elif percentile >= 65 or total_score >= 60:
-            return 'SILVER'
+            return "SILVER"
     else:
         if total_score >= 85:
-            return 'PLATINUM'
+            return "PLATINUM"
         elif total_score >= 75:
-            return 'GOLD'
+            return "GOLD"
         elif total_score >= 60:
-            return 'SILVER'
+            return "SILVER"
 
-    return 'BRONZE'
+    return "BRONZE"
 
 
 # =============================================================================
 # MAIN SCORING PIPELINE
 # =============================================================================
 
+
 class InvestmentScorer:
     """Main class for calculating investment scores using Supabase"""
 
-    def __init__(self, weights: Optional[ScoringWeights] = None, limit: Optional[int] = None):
+    def __init__(
+        self, weights: Optional[ScoringWeights] = None, limit: Optional[int] = None
+    ):
         load_dotenv()
         self.client: Optional[Client] = None
         self.weights = weights or ScoringWeights()
@@ -487,7 +516,8 @@ class InvestmentScorer:
         try:
             # Configure client to reduce verbose logging
             import logging
-            supabase_logger = logging.getLogger('httpx')
+
+            supabase_logger = logging.getLogger("httpx")
             supabase_logger.setLevel(logging.WARNING)  # Reduce HTTP request logging
 
             self.client = get_supabase_client()
@@ -502,7 +532,7 @@ class InvestmentScorer:
 
     def fetch_property_data(self) -> List[Dict]:
         """
-        Fetch all required data for scoring using Supabase client.
+        Fetch all required data for scoring using Supabase client with optimized batch queries.
 
         Returns:
             List of property dictionaries with all required data.
@@ -510,130 +540,127 @@ class InvestmentScorer:
         logger.info("Fetching property data from database...")
 
         try:
-            # First, fetch market statistics
+            # First, fetch market statistics (single request)
             market_stats_response = self.client.rpc(
-                'get_market_stats',
-                {}  # No parameters needed
+                "get_market_stats",
+                {},  # No parameters needed
             ).execute()
 
-            # Build market stats lookup
+            # Build market stats lookup dictionary
             market_stats = {}
             if market_stats_response.data:
                 for stat in market_stats_response.data:
-                    key = (stat['market_id'], stat['bedrooms'])
+                    key = (stat["market_id"], stat["bedrooms"])
                     market_stats[key] = stat
             else:
                 logger.warning("No market stats returned from get_market_stats()")
 
-            # Fetch properties with basic data
-            properties_response = self.client.table("properties").select(
-                "id, property_id, title, bedrooms, market_id, is_guest_favorite, is_reliable_data"
-            ).execute()
+            # Fetch all properties with their related data in a single batch query
+            # Note: Supabase has a default limit of 1000 rows per RPC call
+            # We need to use the Supabase client's count and limit features
+
+            logger.info("Fetching all properties from RPC function...")
+
+            # Supabase RPC calls have a default limit, we need to paginate
+            # Fetch in batches to handle more than 1000 properties
+            all_properties_data = []
+            batch_size = 1000
+            offset = 0
+
+            while True:
+                # Note: Supabase RPC doesn't support limit/offset in params
+                # So we use the PostgREST range headers
+                response = (
+                    self.client.rpc("get_properties_for_scoring", {})
+                    .range(offset, offset + batch_size - 1)
+                    .execute()
+                )
+
+                if not response.data:
+                    break
+
+                all_properties_data.extend(response.data)
+                logger.info(
+                    f"Fetched {len(response.data)} properties (total: {len(all_properties_data)})"
+                )
+
+                # If we got less than batch_size, we're done
+                if len(response.data) < batch_size:
+                    break
+
+                offset += batch_size
+
+            properties_data = all_properties_data
+
+            # Fallback to batched table queries if RPC didn't return data
+            if not all_properties_data:
+                logger.info("Using batched table queries as fallback...")
+                properties_data = self._fetch_properties_batched(market_stats)
+            else:
+                properties_data = all_properties_data
 
             # Process and enrich data
             properties = []
-            if not properties_response.data:
+            if not properties_data:
                 logger.warning("No properties returned from database query")
                 logger.info("This may mean:")
                 logger.info("1. No properties in database yet (run data loading first)")
                 logger.info("2. All properties have is_reliable_data = FALSE")
                 return properties
 
-            for row in properties_response.data:
+            for row in properties_data:
                 # Skip if not reliable data
-                is_reliable = row.get('is_reliable_data')
+                is_reliable = row.get("is_reliable_data")
                 if is_reliable is False or is_reliable is None:
                     continue
 
-                property_uuid = row['id']
-                market_id = row.get('market_id')
-                bedrooms = row.get('bedrooms')
+                property_uuid = row["id"]
+                market_id = row.get("market_id")
+                bedrooms = row.get("bedrooms")
 
                 # Get market stats
                 stats_key = (market_id, bedrooms)
                 market_stat = market_stats.get(stats_key, {})
 
-                # Fetch performance data separately
-                perf_response = self.client.table("property_performance").select(
-                    "revenue, occupancy, adr, total_reviews, rating, high_season_reviews"
-                ).eq("property_id", property_uuid).execute()
-
-                perf = perf_response.data[0] if perf_response.data else {}
-
-                # Fetch review data separately
-                reviews_response = self.client.table("property_reviews").select(
-                    "total_months, missing_months, avg_reviews_per_month"
-                ).eq("property_id", property_uuid).execute()
-
-                reviews = reviews_response.data[0] if reviews_response.data else {}
-
-                # Fetch amenities separately
-                amenities_response = self.client.table("property_amenities").select(
-                    "amenities"
-                ).eq("property_id", property_uuid).execute()
-
-                amenities_data = amenities_response.data[0] if amenities_response.data else {}
-
-                # Fetch host data separately
-                host_id = row.get('host_id')
-                host_data = {}
-                if host_id:
-                    host_response = self.client.table("hosts").select(
-                        "is_super_host"
-                    ).eq("id", host_id).execute()
-                    host_data = host_response.data[0] if host_response.data else {}
-
-                # Fetch market name separately
-                market_name = None
-                if market_id:
-                    market_response = self.client.table("markets").select(
-                        "name"
-                    ).eq("id", market_id).execute()
-                    if market_response.data:
-                        market_name = market_response.data[0].get('name')
-
                 # Build property dictionary
                 property_data = {
-                    'property_id': property_uuid,  # Internal UUID
-                    'external_property_id': row.get('property_id'),
-                    'title': row.get('title'),
-                    'bedrooms': bedrooms,
-                    'market_id': market_id,
-                    'market_name': market_name,
-
+                    "property_id": property_uuid,  # Internal UUID
+                    "external_property_id": row.get("property_id"),
+                    "title": row.get("title"),
+                    "bedrooms": bedrooms,
+                    "market_id": market_id,
+                    "market_name": row.get("market_name"),
                     # Performance data
-                    'revenue': perf.get('revenue'),
-                    'occupancy': perf.get('occupancy'),
-                    'adr': perf.get('adr'),
-                    'total_reviews': perf.get('total_reviews'),
-                    'rating': perf.get('rating'),
-                    'high_season_reviews': perf.get('high_season_reviews'),
-
+                    "revenue": row.get("revenue"),
+                    "occupancy": row.get("occupancy"),
+                    "adr": row.get("adr"),
+                    "total_reviews": row.get("total_reviews"),
+                    "rating": row.get("rating"),
+                    "high_season_reviews": row.get("high_season_reviews"),
                     # Review analysis data
-                    'total_months': reviews.get('total_months'),
-                    'missing_months': reviews.get('missing_months'),
-                    'avg_reviews_per_month': reviews.get('avg_reviews_per_month'),
-
+                    "total_months": row.get("total_months"),
+                    "missing_months": row.get("missing_months"),
+                    "avg_reviews_per_month": row.get("avg_reviews_per_month"),
                     # Host/property flags
-                    'is_super_host': host_data.get('is_super_host'),
-                    'is_guest_favorite': row.get('is_guest_favorite'),
-
+                    "is_super_host": row.get("is_super_host"),
+                    "is_guest_favorite": row.get("is_guest_favorite"),
                     # Amenities
-                    'amenities_text': str(amenities_data.get('amenities', '')) if amenities_data.get('amenities') else None,
-
+                    "amenities_text": str(row.get("amenities", ""))
+                    if row.get("amenities")
+                    else None,
                     # Market stats
-                    'market_avg_revenue': market_stat.get('avg_revenue'),
-                    'market_max_revenue': market_stat.get('max_revenue'),
-                    'market_avg_occupancy': market_stat.get('avg_occupancy'),
-                    'market_avg_adr': market_stat.get('avg_adr'),
-                    'market_property_count': market_stat.get('property_count'),
+                    "market_avg_revenue": market_stat.get("avg_revenue"),
+                    "market_max_revenue": market_stat.get("max_revenue"),
+                    "market_avg_occupancy": market_stat.get("avg_occupancy"),
+                    "market_avg_adr": market_stat.get("avg_adr"),
+                    "market_property_count": market_stat.get("property_count"),
                 }
 
                 properties.append(property_data)
 
             # Apply limit if specified
             if self.limit:
-                properties = properties[:self.limit]
+                properties = properties[: self.limit]
                 logger.info(f"Limited to {self.limit} properties for scoring")
 
             logger.info(f"Found {len(properties)} properties to score")
@@ -643,63 +670,180 @@ class InvestmentScorer:
             logger.error(f"Error fetching property data: {e}")
             raise
 
+    def _fetch_properties_batched(self, market_stats: Dict) -> List[Dict]:
+        """
+        Fallback method to fetch properties using batched table queries.
+
+        This method fetches all data in 5 batch queries instead of N*5 individual queries.
+        """
+        # Fetch all properties with basic data
+        properties_response = (
+            self.client.table("properties")
+            .select(
+                "id, property_id, title, bedrooms, market_id, host_id, is_guest_favorite, is_reliable_data"
+            )
+            .execute()
+        )
+
+        if not properties_response.data:
+            return []
+
+        properties_list = properties_response.data
+        property_ids = [p["id"] for p in properties_list]
+
+        # Fetch all performance data in one batch
+        perf_response = (
+            self.client.table("property_performance")
+            .select(
+                "property_id, revenue, occupancy, adr, total_reviews, rating, high_season_reviews"
+            )
+            .in_("property_id", property_ids)
+            .execute()
+        )
+
+        # Build performance lookup
+        perf_lookup = (
+            {p["property_id"]: p for p in perf_response.data}
+            if perf_response.data
+            else {}
+        )
+
+        # Fetch all review data in one batch
+        reviews_response = (
+            self.client.table("property_reviews")
+            .select("property_id, total_months, missing_months, avg_reviews_per_month")
+            .in_("property_id", property_ids)
+            .execute()
+        )
+
+        # Build reviews lookup
+        reviews_lookup = (
+            {r["property_id"]: r for r in reviews_response.data}
+            if reviews_response.data
+            else {}
+        )
+
+        # Fetch all amenities in one batch
+        amenities_response = (
+            self.client.table("property_amenities")
+            .select("property_id, amenities")
+            .in_("property_id", property_ids)
+            .execute()
+        )
+
+        # Build amenities lookup
+        amenities_lookup = (
+            {a["property_id"]: a for a in amenities_response.data}
+            if amenities_response.data
+            else {}
+        )
+
+        # Fetch all host data in one batch
+        host_ids = [p["host_id"] for p in properties_list if p.get("host_id")]
+        host_lookup = {}
+        if host_ids:
+            host_response = (
+                self.client.table("hosts")
+                .select("id, is_super_host")
+                .in_("id", host_ids)
+                .execute()
+            )
+            host_lookup = (
+                {h["id"]: h for h in host_response.data} if host_response.data else {}
+            )
+
+        # Fetch all market names in one batch
+        market_ids = [p["market_id"] for p in properties_list if p.get("market_id")]
+        market_lookup = {}
+        if market_ids:
+            market_response = (
+                self.client.table("markets")
+                .select("id, name")
+                .in_("id", market_ids)
+                .execute()
+            )
+            market_lookup = (
+                {m["id"]: m for m in market_response.data}
+                if market_response.data
+                else {}
+            )
+
+        # Combine all data
+        combined_data = []
+        for prop in properties_list:
+            prop_id = prop["id"]
+            combined_row = {
+                **prop,
+                "is_super_host": host_lookup.get(prop.get("host_id"), {}).get(
+                    "is_super_host"
+                ),
+                "market_name": market_lookup.get(prop.get("market_id"), {}).get("name"),
+                **perf_lookup.get(prop_id, {}),
+                **reviews_lookup.get(prop_id, {}),
+                **amenities_lookup.get(prop_id, {}),
+            }
+            combined_data.append(combined_row)
+
+        return combined_data
+
     def score_property(self, property_data: dict) -> PropertyScore:
         """Calculate all scores for a single property"""
 
         # Calculate individual component scores
         revenue_score = calculate_revenue_score(
-            property_data.get('revenue'),
-            property_data.get('market_avg_revenue'),
-            property_data.get('market_max_revenue')
+            property_data.get("revenue"),
+            property_data.get("market_avg_revenue"),
+            property_data.get("market_max_revenue"),
         )
 
-        occupancy_score = calculate_occupancy_score(
-            property_data.get('occupancy')
-        )
+        occupancy_score = calculate_occupancy_score(property_data.get("occupancy"))
 
         adr_score = calculate_adr_score(
-            property_data.get('adr'),
-            property_data.get('market_avg_adr'),
-            property_data.get('occupancy')
+            property_data.get("adr"),
+            property_data.get("market_avg_adr"),
+            property_data.get("occupancy"),
         )
 
         review_score = calculate_review_score(
-            property_data.get('total_reviews'),
-            property_data.get('rating'),
-            property_data.get('avg_reviews_per_month')
+            property_data.get("total_reviews"),
+            property_data.get("rating"),
+            property_data.get("avg_reviews_per_month"),
         )
 
-        amenity_score = calculate_amenity_score(
-            property_data.get('amenities_text')
-        )
+        amenity_score = calculate_amenity_score(property_data.get("amenities_text"))
 
         host_score = calculate_host_score(
-            property_data.get('is_super_host'),
-            property_data.get('is_guest_favorite')
+            property_data.get("is_super_host"), property_data.get("is_guest_favorite")
         )
 
         seasonal_score = calculate_seasonal_score(
-            property_data.get('total_months'),
-            property_data.get('missing_months'),
-            property_data.get('high_season_reviews'),
-            property_data.get('total_reviews')
+            property_data.get("total_months"),
+            property_data.get("missing_months"),
+            property_data.get("high_season_reviews"),
+            property_data.get("total_reviews"),
         )
 
         market_score = calculate_market_score(
-            property_data.get('market_avg_occupancy'),
-            property_data.get('market_avg_revenue'),
-            property_data.get('market_property_count')
+            property_data.get("market_avg_occupancy"),
+            property_data.get("market_avg_revenue"),
+            property_data.get("market_property_count"),
         )
 
         # Calculate total
         total_score = calculate_total_score(
-            revenue_score, occupancy_score, adr_score, review_score,
-            amenity_score, host_score, seasonal_score, market_score,
-            self.weights
+            revenue_score,
+            occupancy_score,
+            adr_score,
+            review_score,
+            amenity_score,
+            host_score,
+            seasonal_score,
+            market_score,
+            self.weights,
         )
 
         return PropertyScore(
-            property_id=str(property_data['property_id']),
+            property_id=str(property_data["property_id"]),
             revenue_score=round(revenue_score, 2),
             occupancy_score=round(occupancy_score, 2),
             adr_score=round(adr_score, 2),
@@ -708,7 +852,7 @@ class InvestmentScorer:
             host_score=round(host_score, 2),
             seasonal_score=round(seasonal_score, 2),
             market_score=round(market_score, 2),
-            total_score=total_score
+            total_score=total_score,
         )
 
     def calculate_percentiles(self, scores: List[PropertyScore]) -> List[PropertyScore]:
@@ -722,74 +866,128 @@ class InvestmentScorer:
             score.opportunity_tier = assign_opportunity_tier(
                 score.total_score, percentile
             )
-            score.is_top_opportunity = score.opportunity_tier in ['PLATINUM', 'GOLD']
+            score.is_top_opportunity = score.opportunity_tier in ["PLATINUM", "GOLD"]
 
         return sorted_scores
 
     def save_scores(self, scores: List[PropertyScore]) -> Dict[str, int]:
         """
-        Save scores to database using Supabase client.
+        Save scores to database using optimized bulk upsert operations.
+
+        This method uses batch operations to reduce the number of database requests
+        from 2*N (check + insert/update per property) to approximately 2 total requests
+        (bulk upsert + temp table cleanup).
 
         Returns:
             Dictionary with 'inserted' and 'updated' counts.
         """
         logger.info(f"Saving scores for {len(scores)} properties...")
 
-        inserted_count = 0
-        updated_count = 0
+        try:
+            # Prepare batch data for bulk upsert
+            batch_data = []
+            for score in scores:
+                batch_data.append(
+                    {
+                        "property_id": score.property_id,
+                        "revenue_score": score.revenue_score,
+                        "occupancy_score": score.occupancy_score,
+                        "adr_score": score.adr_score,
+                        "review_score": score.review_score,
+                        "amenity_score": score.amenity_score,
+                        "host_score": score.host_score,
+                        "seasonal_score": score.seasonal_score,
+                        "market_score": score.market_score,
+                        "total_score": score.total_score,
+                        "percentile_rank": score.percentile_rank,
+                        "is_top_opportunity": score.is_top_opportunity,
+                        "opportunity_tier": score.opportunity_tier,
+                        "scoring_version": self.scoring_version,
+                    }
+                )
 
-        for score in scores:
+            # Try to use the temp table upsert approach (most efficient)
             try:
-                property_uuid = score.property_id
+                # Step 1: Insert all scores into temp table
+                logger.info("Inserting scores into temp table...")
+                self.client.table("property_investment_scores_temp").insert(
+                    batch_data
+                ).execute()
 
-                # Prepare score data
-                score_data = {
-                    "revenue_score": score.revenue_score,
-                    "occupancy_score": score.occupancy_score,
-                    "adr_score": score.adr_score,
-                    "review_score": score.review_score,
-                    "amenity_score": score.amenity_score,
-                    "host_score": score.host_score,
-                    "seasonal_score": score.seasonal_score,
-                    "market_score": score.market_score,
-                    "total_score": score.total_score,
-                    "percentile_rank": score.percentile_rank,
-                    "is_top_opportunity": score.is_top_opportunity,
-                    "opportunity_tier": score.opportunity_tier,
-                    "scoring_version": self.scoring_version,
-                }
+                # Step 2: Call the upsert function to merge temp table into main table
+                logger.info("Upserting scores from temp table...")
+                upsert_response = self.client.rpc(
+                    "upsert_investment_scores_from_temp", {}
+                ).execute()
 
-                # Check if score exists
-                response = (
-                    self.client.table("property_investment_scores")
-                    .select("id")
-                    .eq("property_id", property_uuid)
-                    .execute()
-                )
-
-                if response.data:
-                    # Update existing score
-                    score_uuid = response.data[0]["id"]
-                    self.client.table("property_investment_scores").update(
-                        score_data
-                    ).eq("id", score_uuid).execute()
-                    updated_count += 1
+                if upsert_response.data:
+                    result = upsert_response.data[0]
+                    inserted_count = result.get("inserted", 0)
+                    updated_count = result.get("updated", 0)
                 else:
-                    # Insert new score
-                    score_data["property_id"] = property_uuid
-                    self.client.table("property_investment_scores").insert(
-                        score_data
-                    ).execute()
-                    inserted_count += 1
+                    # Fallback: count manually
+                    inserted_count = len(batch_data)
+                    updated_count = 0
 
-            except Exception as e:
-                logger.error(
-                    f"Error saving score for property {score.property_id}: {e}"
+                logger.info(
+                    f"Scores saved: {inserted_count} inserted, {updated_count} updated"
                 )
-                continue
+                return {"inserted": inserted_count, "updated": updated_count}
 
-        logger.info(f"Scores saved: {inserted_count} inserted, {updated_count} updated")
-        return {"inserted": inserted_count, "updated": updated_count}
+            except Exception as temp_table_error:
+                logger.warning(
+                    f"Temp table approach failed ({temp_table_error}), falling back to batch upsert..."
+                )
+
+                # Fallback: Use batch upsert with ON CONFLICT
+                # This is still much better than individual operations
+                inserted_count = 0
+                updated_count = 0
+
+                # Process in batches of 100 to avoid payload size limits
+                batch_size = 100
+                for i in range(0, len(batch_data), batch_size):
+                    batch = batch_data[i : i + batch_size]
+
+                    try:
+                        # Try bulk insert with upsert
+                        response = (
+                            self.client.table("property_investment_scores")
+                            .upsert(batch, on_conflict="property_id")
+                            .execute()
+                        )
+
+                        # Count results
+                        if response.data:
+                            # Supabase doesn't distinguish between insert/update in upsert response
+                            # We'll count all as updates for simplicity
+                            updated_count += len(response.data)
+                        else:
+                            inserted_count += len(batch)
+
+                    except Exception as batch_error:
+                        logger.error(f"Error in batch {i // batch_size}: {batch_error}")
+                        # If batch fails, try individual inserts for this batch
+                        for item in batch:
+                            try:
+                                self.client.table("property_investment_scores").upsert(
+                                    item, on_conflict="property_id"
+                                ).execute()
+                                updated_count += 1
+                            except Exception as individual_error:
+                                logger.error(
+                                    f"Error saving score for property {item['property_id']}: {individual_error}"
+                                )
+                                continue
+
+                logger.info(
+                    f"Scores saved: {inserted_count} inserted, {updated_count} updated"
+                )
+                return {"inserted": inserted_count, "updated": updated_count}
+
+        except Exception as e:
+            logger.error(f"Error saving scores: {e}")
+            raise
 
     def run(self) -> List[PropertyScore]:
         """Execute full scoring pipeline"""
@@ -874,39 +1072,14 @@ class InvestmentScorer:
 # QUERY HELPERS
 # =============================================================================
 
+
 def get_top_opportunities(limit: int = 20) -> List[Dict]:
     """Retrieve top investment opportunities"""
     load_dotenv()
     client = get_supabase_client()
 
-    query = """
-    SELECT
-        p.property_id as external_id,
-        p.title,
-        p.bedrooms,
-        m.name as market,
-        pp.revenue,
-        pp.occupancy,
-        pp.adr,
-        pis.total_score,
-        pis.opportunity_tier,
-        pis.revenue_score,
-        pis.occupancy_score,
-        pis.adr_score,
-        pis.review_score,
-        pis.amenity_score,
-        pis.percentile_rank
-    FROM property_investment_scores pis
-    JOIN properties p ON p.id = pis.property_id
-    JOIN property_performance pp ON pp.property_id = p.id
-    JOIN markets m ON m.id = p.market_id
-    WHERE pis.is_top_opportunity = TRUE
-    ORDER BY pis.total_score DESC
-    LIMIT %s
-    """
-
     try:
-        response = client.rpc('get_top_opportunities', {'limit_count': limit}).execute()
+        response = client.rpc("get_top_opportunities", {"limit_count": limit}).execute()
         return response.data if response.data else []
     except Exception as e:
         logger.error(f"Error fetching top opportunities: {e}")
@@ -922,7 +1095,9 @@ def get_undervalued_opportunities(limit: int = 10) -> List[Dict]:
     client = get_supabase_client()
 
     try:
-        response = client.rpc('get_undervalued_opportunities', {'limit_count': limit}).execute()
+        response = client.rpc(
+            "get_undervalued_opportunities", {"limit_count": limit}
+        ).execute()
         return response.data if response.data else []
     except Exception as e:
         logger.error(f"Error fetching undervalued opportunities: {e}")
@@ -932,6 +1107,7 @@ def get_undervalued_opportunities(limit: int = 10) -> List[Dict]:
 # =============================================================================
 # USAGE EXAMPLE
 # =============================================================================
+
 
 def main():
     """Main entry point for property scoring."""
@@ -958,7 +1134,9 @@ def main():
             top_scores = sorted(scores, key=lambda x: x.total_score, reverse=True)[:10]
             logger.info("\n=== TOP 10 INVESTMENT OPPORTUNITIES ===")
             for score in top_scores:
-                logger.info(f"Score: {score.total_score} | Tier: {score.opportunity_tier} | Property ID: {score.property_id}")
+                logger.info(
+                    f"Score: {score.total_score} | Tier: {score.opportunity_tier} | Property ID: {score.property_id}"
+                )
 
         return 0
     except Exception as e:

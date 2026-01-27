@@ -8,6 +8,7 @@ A data pipeline system for managing short-term rental property data with optimiz
 - **Database Management**: Supabase/PostgreSQL with migration support and schema versioning
 - **Optimized Loading**: High-performance batch loading
 - **Property Scoring**: Investment opportunity scoring with 8-component analysis
+- **FastAPI Backend**: RESTful API for querying property data, market analysis, and investment scores
 - **Docker Support**: Containerized environment for easy deployment
 
 ## Quick Start
@@ -43,11 +44,98 @@ The easiest way to use this system is through the interactive CLI tool:
 This will launch an interactive menu where you can:
 - 🗄️ Run database migrations (run, status, dry-run, test connection)
 - 📊 Run the data pipeline (full, clean only, load only, batch mode)
+- 🌐 Manage API service (start, stop, restart, logs, health check, open docs)
 - 🏗️ Build Docker images
 - 📈 Check system status
 - 🐳 Manage Docker containers
 
 The CLI provides a user-friendly interface with prompts for options like limits and batch sizes.
+
+## API Integration
+
+The system includes a FastAPI backend that provides RESTful endpoints for querying property data, market analysis, and investment scores.
+
+### Health Check
+
+Check if the API is running:
+
+```bash
+curl http://localhost:8000/api/v1/health
+```
+
+Response:
+```json
+{
+  "status": "healthy",
+  "database": "connected",
+  "timestamp": "2024-01-27T22:00:00.000Z",
+  "version": "1.0.0"
+}
+```
+
+### Running the API
+
+#### Using Scripts
+
+**Start API service only:**
+```bash
+./scripts/run.sh api detached
+```
+
+**Start all services (pipeline + api):**
+```bash
+./scripts/run.sh all detached
+```
+
+#### Using Docker Compose
+
+**Start API in background:**
+```bash
+docker-compose up -d api
+```
+
+**Start all services in background:**
+```bash
+docker-compose up -d
+```
+
+#### Using Interactive CLI
+
+Run the interactive CLI and select "🌐 API Service" from the menu:
+```bash
+./scripts/cli.sh
+```
+
+From the API Service menu, you can:
+- Start/Stop/Restart API service
+- View API logs
+- Check API health
+- Open API documentation in browser
+
+### API Endpoints
+
+Once the API is running, access it at:
+- **API Base URL**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs (Swagger UI)
+- **Alternative Docs**: http://localhost:8000/redoc (ReDoc)
+
+Available endpoints include:
+- `/api/v1/health` - Health check
+- `/api/v1/markets` - Market data endpoints
+- `/api/v1/properties` - Property data endpoints
+- `/api/v1/investment-scores` - Investment score endpoints
+
+### Building the API
+
+**Build API service only:**
+```bash
+./scripts/build.sh api
+```
+
+**Build all services:**
+```bash
+./scripts/build.sh all
+```
 
 ### Running the Pipeline
 
@@ -92,6 +180,18 @@ The CLI provides a user-friendly interface with prompts for options like limits 
 
 ```
 .
+├── api/                           # FastAPI backend
+│   ├── __init__.py
+│   ├── main.py                    # FastAPI application
+│   ├── models.py                  # Pydantic models
+│   ├── database.py                 # Database query functions
+│   ├── Dockerfile                  # API Docker configuration
+│   └── routes/                    # API route handlers
+│       ├── __init__.py
+│       ├── health.py               # Health check endpoint
+│       ├── markets.py              # Market endpoints
+│       ├── properties.py           # Property endpoints
+│       └── investment_scores.py    # Investment score endpoints
 ├── data/                          # Raw and cleaned CSV files
 ├── docs/                          # Documentation
 │   ├── BATCH_LOADING_OPTIMIZATION.md
@@ -105,18 +205,17 @@ The CLI provides a user-friendly interface with prompts for options like limits 
 │   ├── load_data.py               # Original row-by-row loader
 │   └── run_pipeline.py            # Pipeline orchestrator
 ├── scripts/                       # Shell scripts
-│   ├── build.sh
-│   ├── cli.sh                     # Interactive CLI tool
-│   ├── migrate.sh
-│   ├── pipeline.sh                # Pipeline runner
-│   └── run.sh
+│   ├── build.sh                  # Build Docker images
+│   ├── cli.sh                    # Interactive CLI tool
+│   ├── migrate.sh                # Database migrations
+│   ├── pipeline.sh               # Pipeline runner
+│   └── run.sh                   # Run Docker services
 ├── src/                          # Source code
 │   └── database/                 # Database utilities
-├── Dockerfile
-├── docker-compose.yml
-├── requirements.txt
-├── cli.sh                        # Interactive CLI launcher
-└── sample.env
+├── Dockerfile                     # Pipeline Docker configuration
+├── docker-compose.yml              # Docker Compose configuration
+├── requirements.txt               # Python dependencies
+└── sample.env                    # Environment variables template
 ```
 
 ## Database Schema

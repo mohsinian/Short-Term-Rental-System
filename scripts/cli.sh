@@ -84,14 +84,54 @@ check_prerequisites() {
 # Function to build Docker image
 build_docker() {
     echo ""
-    print_header "Building Docker image..."
+    print_header "Build Docker Image"
     echo ""
-    if $DOCKER_COMPOSE build; then
-        print_success "Docker image built successfully!"
-    else
-        print_error "Failed to build Docker image"
-        return 1
-    fi
+    echo "Select build option:"
+    echo "  1) Build all services (pipeline + api)"
+    echo "  2) Build pipeline service only"
+    echo "  3) Build API service only"
+    echo "  0) Back to main menu"
+    echo ""
+    read -p "Enter your choice [0-3]: " build_choice
+
+    case $build_choice in
+        1)
+            echo ""
+            print_info "Building all Docker images (pipeline + api)..."
+            if $DOCKER_COMPOSE build; then
+                print_success "Docker images built successfully!"
+            else
+                print_error "Failed to build Docker images"
+                return 1
+            fi
+            ;;
+        2)
+            echo ""
+            print_info "Building pipeline service..."
+            if $DOCKER_COMPOSE build pipeline; then
+                print_success "Pipeline service built successfully!"
+            else
+                print_error "Failed to build pipeline service"
+                return 1
+            fi
+            ;;
+        3)
+            echo ""
+            print_info "Building API service..."
+            if $DOCKER_COMPOSE build api; then
+                print_success "API service built successfully!"
+            else
+                print_error "Failed to build API service"
+                return 1
+            fi
+            ;;
+        0)
+            return
+            ;;
+        *)
+            print_error "Invalid choice!"
+            ;;
+    esac
     echo ""
 }
 
@@ -195,144 +235,6 @@ run_pipeline() {
         4)
             echo ""
             read -p "Enter limit (number of properties, or leave empty for all): " limit
-            read -p "Enter batch size (default: 500, press Enter for default): " batch_size
-            if [ -z "$limit" ]; then
-                if [ -z "$batch_size" ]; then
-                    print_info "Running full pipeline with batch loading..."
-                    $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --batch
-                else
-                    print_info "Running full pipeline with batch loading (batch size: $batch_size)..."
-                    $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --batch --batch-size "$batch_size"
-                fi
-            else
-                if [ -z "$batch_size" ]; then
-                    print_info "Running full pipeline with batch loading (limit: $limit properties)..."
-                    $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --batch --limit "$limit"
-                else
-                    print_info "Running full pipeline with batch loading (limit: $limit, batch size: $batch_size)..."
-                    $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --batch --limit "$limit" --batch-size "$batch_size"
-                fi
-            fi
-            ;;
-        5)
-            echo ""
-            read -p "Enter limit (number of properties, or leave empty for all): " limit
-            read -p "Enter batch size (default: 500, press Enter for default): " batch_size
-            if [ -z "$limit" ]; then
-                if [ -z "$batch_size" ]; then
-                    print_info "Running data loading with batch mode only..."
-                    $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --load-only --batch
-                else
-                    print_info "Running data loading with batch mode only (batch size: $batch_size)..."
-                    $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --load-only --batch --batch-size "$batch_size"
-                fi
-            else
-                if [ -z "$batch_size" ]; then
-                    print_info "Running data loading with batch mode only (limit: $limit properties)..."
-                    $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --load-only --batch --limit "$limit"
-                else
-                    print_info "Running data loading with batch mode only (limit: $limit, batch size: $batch_size)..."
-                    $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --load-only --batch --limit "$limit" --batch-size "$batch_size"
-                fi
-            fi
-            ;;
-        6)
-            echo ""
-            print_info "Enter custom pipeline options..."
-            read -p "Options (e.g., --batch --limit 100 --batch-size 500): " custom_options
-            print_info "Running pipeline with custom options: $custom_options"
-            $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py $custom_options
-            ;;
-        0)
-            return
-            ;;
-        *)
-            print_error "Invalid choice!"
-            ;;
-    esac
-    echo ""
-}
-
-# Function to show system status
-show_status() {
-    echo ""
-    print_header "System Status"
-    echo ""
-    
-    # Check Docker
-    if docker info > /dev/null 2>&1; then
-        print_success "Docker is running"
-    else
-        print_error "Docker is not running"
-    fi
-    
-    # Check .env file
-    if [ -f .env ]; then
-        print_success ".env file exists"
-    else
-        print_error ".env file not found"
-    fi
-    
-    # Check Docker images
-    echo ""
-    print_info "Docker images:"
-    docker images | grep -E "REPOSITORY|short-term-rental" || echo "  No images found"
-    
-    # Check running containers
-    echo ""
-    print_info "Running containers:"
-    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "NAMES|short-term-rental" || echo "  No containers running"
-    
-    echo ""
-}
-
-# Function to manage Docker containers
-manage_containers() {
-    echo ""
-    print_header "Container Management"
-    echo ""
-    echo "Select operation:"
-    echo "  1) Start containers (docker-compose up)"
-    echo "  2) Stop containers (docker-compose down)"
-    echo "  3) View logs"
-    echo "  4) Remove all containers and volumes"
-    echo "  0) Back to main menu"
-    echo ""
-    read -p "Enter your choice [0-4]: " container_choice
-
-    case $container_choice in
-        1)
-            echo ""
-            print_info "Starting containers..."
-            $DOCKER_COMPOSE up -d
-            print_success "Containers started!"
-            ;;
-        2)
-            echo ""
-            print_info "Stopping containers..."
-            $DOCKER_COMPOSE down
-            print_success "Containers stopped!"
-            ;;
-        3)
-            echo ""
-            print_info "Showing logs (press Ctrl+C to exit)..."
-            $DOCKER_COMPOSE logs -f
-            ;;
-        4)
-            echo ""
-            print_warning "This will remove all containers and volumes!"
-            read -p "Are you sure? (yes/no): " confirm
-            if [ "$confirm" = "yes" ]; then
-                print_info "Removing containers and volumes..."
-                $DOCKER_COMPOSE down -v
-                print_success "Containers and volumes removed!"
-            else
-                print_info "Operation cancelled."
-                fi
-            ;;
-        4)
-            echo ""
-            read -p "Enter limit (number of properties, or leave empty for all): " limit
             if [ -z "$limit" ]; then
                 print_info "Running property scoring only..."
                 $DOCKER_COMPOSE run --rm pipeline python pipeline/run_pipeline.py --score-only
@@ -413,6 +315,225 @@ manage_containers() {
     echo ""
 }
 
+# Function to show system status
+show_status() {
+    echo ""
+    print_header "System Status"
+    echo ""
+    
+    # Check Docker
+    if docker info > /dev/null 2>&1; then
+        print_success "Docker is running"
+    else
+        print_error "Docker is not running"
+    fi
+    
+    # Check .env file
+    if [ -f .env ]; then
+        print_success ".env file exists"
+    else
+        print_error ".env file not found"
+    fi
+    
+    # Check API service
+    echo ""
+    print_info "API Service Status:"
+    if $DOCKER_COMPOSE ps api | grep -q "Up"; then
+        print_success "API service is running"
+        print_info "  API URL: http://localhost:8000"
+        print_info "  API Docs: http://localhost:8000/docs"
+    else
+        print_warning "API service is not running"
+    fi
+    
+    # Check Pipeline service
+    echo ""
+    print_info "Pipeline Service Status:"
+    if $DOCKER_COMPOSE ps pipeline | grep -q "Up"; then
+        print_success "Pipeline service is running"
+    else
+        print_warning "Pipeline service is not running"
+    fi
+    
+    # Check Docker images
+    echo ""
+    print_info "Docker images:"
+    docker images | grep -E "REPOSITORY|short-term-rental" || echo "  No images found"
+    
+    # Check running containers
+    echo ""
+    print_info "Running containers:"
+    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "NAMES|short-term-rental" || echo "  No containers running"
+    
+    echo ""
+}
+
+# Function to manage API service
+manage_api() {
+    echo ""
+    print_header "API Service Management"
+    echo ""
+    echo "Select operation:"
+    echo "  1) Start API service"
+    echo "  2) Stop API service"
+    echo "  3) Restart API service"
+    echo "  4) View API logs"
+    echo "  5) Check API health"
+    echo "  6) Open API documentation in browser"
+    echo "  0) Back to main menu"
+    echo ""
+    read -p "Enter your choice [0-6]: " api_choice
+
+    case $api_choice in
+        1)
+            echo ""
+            print_info "Starting API service..."
+            $DOCKER_COMPOSE up -d api
+            print_success "API service started!"
+            echo ""
+            print_info "API Service: http://localhost:8000"
+            print_info "API Docs: http://localhost:8000/docs"
+            ;;
+        2)
+            echo ""
+            print_info "Stopping API service..."
+            $DOCKER_COMPOSE stop api
+            print_success "API service stopped!"
+            ;;
+        3)
+            echo ""
+            print_info "Restarting API service..."
+            $DOCKER_COMPOSE restart api
+            print_success "API service restarted!"
+            echo ""
+            print_info "API Service: http://localhost:8000"
+            print_info "API Docs: http://localhost:8000/docs"
+            ;;
+        4)
+            echo ""
+            print_info "Showing API logs (press Ctrl+C to exit)..."
+            $DOCKER_COMPOSE logs -f api
+            ;;
+        5)
+            echo ""
+            print_info "Checking API health..."
+            if curl -s http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+                print_success "API is healthy!"
+                echo ""
+                curl -s http://localhost:8000/api/v1/health | python3 -m json.tool 2>/dev/null || curl -s http://localhost:8000/api/v1/health
+            else
+                print_error "API is not responding. Make sure the API service is running."
+                print_info "Start the API service with option 1."
+            fi
+            ;;
+        6)
+            echo ""
+            print_info "Opening API documentation in browser..."
+            if command -v open >/dev/null 2>&1; then
+                open http://localhost:8000/docs
+            elif command -v xdg-open >/dev/null 2>&1; then
+                xdg-open http://localhost:8000/docs
+            else
+                print_warning "Could not open browser automatically."
+                print_info "Please open this URL in your browser: http://localhost:8000/docs"
+            fi
+            ;;
+        0)
+            return
+            ;;
+        *)
+            print_error "Invalid choice!"
+            ;;
+    esac
+    echo ""
+}
+
+# Function to manage Docker containers
+manage_containers() {
+    echo ""
+    print_header "Container Management"
+    echo ""
+    echo "Select operation:"
+    echo "  1) Start all containers (docker-compose up -d)"
+    echo "  2) Stop all containers (docker-compose down)"
+    echo "  3) View logs (all services)"
+    echo "  4) View logs (API service only)"
+    echo "  5) View logs (Pipeline service only)"
+    echo "  6) Remove all containers and volumes"
+    echo "  7) Restart API service"
+    echo "  8) Restart Pipeline service"
+    echo "  0) Back to main menu"
+    echo ""
+    read -p "Enter your choice [0-8]: " container_choice
+
+    case $container_choice in
+        1)
+            echo ""
+            print_info "Starting all containers..."
+            $DOCKER_COMPOSE up -d
+            print_success "Containers started!"
+            echo ""
+            print_info "API Service: http://localhost:8000"
+            print_info "API Docs: http://localhost:8000/docs"
+            ;;
+        2)
+            echo ""
+            print_info "Stopping all containers..."
+            $DOCKER_COMPOSE down
+            print_success "Containers stopped!"
+            ;;
+        3)
+            echo ""
+            print_info "Showing logs for all services (press Ctrl+C to exit)..."
+            $DOCKER_COMPOSE logs -f
+            ;;
+        4)
+            echo ""
+            print_info "Showing logs for API service (press Ctrl+C to exit)..."
+            $DOCKER_COMPOSE logs -f api
+            ;;
+        5)
+            echo ""
+            print_info "Showing logs for Pipeline service (press Ctrl+C to exit)..."
+            $DOCKER_COMPOSE logs -f pipeline
+            ;;
+        6)
+            echo ""
+            print_warning "This will remove all containers and volumes!"
+            read -p "Are you sure? (yes/no): " confirm
+            if [ "$confirm" = "yes" ]; then
+                print_info "Removing containers and volumes..."
+                $DOCKER_COMPOSE down -v
+                print_success "Containers and volumes removed!"
+            else
+                print_info "Operation cancelled."
+            fi
+            ;;
+        7)
+            echo ""
+            print_info "Restarting API service..."
+            $DOCKER_COMPOSE restart api
+            print_success "API service restarted!"
+            echo ""
+            print_info "API Service: http://localhost:8000"
+            print_info "API Docs: http://localhost:8000/docs"
+            ;;
+        8)
+            echo ""
+            print_info "Restarting Pipeline service..."
+            $DOCKER_COMPOSE restart pipeline
+            print_success "Pipeline service restarted!"
+            ;;
+        0)
+            return
+            ;;
+        *)
+            print_error "Invalid choice!"
+            ;;
+    esac
+    echo ""
+}
+
 # Main menu
 main_menu() {
     while true; do
@@ -426,12 +547,13 @@ main_menu() {
         echo ""
         echo "  1) 🗄️  Database Migrations"
         echo "  2) 📊 Data Pipeline"
-        echo "  3) 🏗️  Build Docker Image"
-        echo "  4) 📈 System Status"
-        echo "  5) 🐳 Container Management"
+        echo "  3) 🌐 API Service"
+        echo "  4) 🏗️  Build Docker Image"
+        echo "  5) 📈 System Status"
+        echo "  6) 🐳 Container Management"
         echo "  0) Exit"
         echo ""
-        read -p "Enter your choice [0-5]: " choice
+        read -p "Enter your choice [0-6]: " choice
 
         case $choice in
             1)
@@ -441,12 +563,15 @@ main_menu() {
                 check_prerequisites && run_pipeline
                 ;;
             3)
-                build_docker
+                manage_api
                 ;;
             4)
-                show_status
+                build_docker
                 ;;
             5)
+                show_status
+                ;;
+            6)
                 manage_containers
                 ;;
             0)

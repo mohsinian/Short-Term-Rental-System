@@ -9,6 +9,7 @@ A data pipeline system for managing short-term rental property data with optimiz
 - **Optimized Loading**: High-performance batch loading
 - **Property Scoring**: Investment opportunity scoring with 8-component analysis
 - **FastAPI Backend**: RESTful API for querying property data, market analysis, and investment scores
+- **Streamlit Dashboard**: Interactive web interface for visualizing property data and investment opportunities
 - **Docker Support**: Containerized environment for easy deployment
 
 ## Quick Start
@@ -125,6 +126,80 @@ Available endpoints include:
 - `/api/v1/properties` - Property data endpoints
 - `/api/v1/investment-scores` - Investment score endpoints
 
+## Frontend Dashboard
+
+The system includes a Streamlit-based web dashboard for visualizing property data and investment opportunities.
+
+### Running the Frontend
+
+#### Using Docker Compose
+
+**Start all services (pipeline + api + frontend):**
+```bash
+docker-compose up -d
+```
+
+**Start frontend only:**
+```bash
+docker-compose up -d frontend
+```
+
+#### Using Interactive CLI
+
+Run the interactive CLI and select the frontend service from the menu:
+```bash
+./scripts/cli.sh
+```
+
+### Accessing the Dashboard
+
+Once the frontend service is running, access the dashboard at:
+- **Dashboard URL**: http://localhost:8501
+
+### Dashboard Features
+
+The Streamlit dashboard provides three main views:
+
+#### 🏠 Properties Tab
+- Browse all properties with filtering and sorting
+- Filter by market, bedrooms, revenue, occupancy, rating, and more
+- Paginated results for easy navigation
+- Property cards showing key metrics (bedrooms, bathrooms, revenue, occupancy)
+
+#### 🏆 Top Opportunities Tab
+- View top 15 investment opportunities ranked by total score
+- Interactive bar chart showing property scores
+- Detailed table with property metrics
+- Opportunity tier classification (PLATINUM, GOLD, SILVER, BRONZE)
+
+#### 📊 Insights Tab
+- **Revenue by Bedroom Count**: Bar chart showing average revenue per bedroom count
+- **Opportunity Tiers**: Pie chart showing distribution of investment opportunity tiers
+- **Score Distribution**: Histogram showing the distribution of investment scores
+
+### Dashboard Filters
+
+The sidebar provides comprehensive filtering options:
+- **Market Selection**: Filter by geographic market
+- **Bedrooms**: Minimum and maximum bedroom count
+- **Revenue**: Minimum and maximum revenue range
+- **Occupancy**: Minimum and maximum occupancy percentage
+- **Rating**: Minimum rating threshold
+- **Property Status**: Guest favorite and reliable data filters
+- **Sorting**: Sort by title, bedrooms, bathrooms, accommodates, or date
+
+### Building the Frontend
+
+**Build frontend service only:**
+```bash
+./scripts/build.sh frontend
+```
+
+**Build all services:**
+```bash
+./scripts/build.sh all
+```
+
 ### Building the API
 
 **Build API service only:**
@@ -192,7 +267,13 @@ Available endpoints include:
 │       ├── health.py               # Health check endpoint
 │       ├── markets.py              # Market endpoints
 │       ├── properties.py           # Property endpoints
-│       └── investment_scores.py    # Investment score endpoints
+│       ├── investment_scores.py    # Investment score endpoints
+│       └── insights.py            # Insights and top performers endpoints
+├── frontend/                      # Streamlit Dashboard (Web UI)
+│   ├── __init__.py
+│   ├── app.py                     # Streamlit application
+│   ├── Dockerfile                 # Frontend Docker configuration
+│   └── requirements.txt           # Frontend dependencies
 ├── data/                          # Raw and cleaned CSV files
 ├── docs/                          # Documentation
 │   ├── BATCH_LOADING_OPTIMIZATION.md
@@ -224,13 +305,19 @@ Available endpoints include:
 
 ### Architecture Overview
 
-The project uses a dual-Docker setup for optimized deployment:
+The project uses a multi-service Docker setup for optimized deployment:
 
 - **API Service** ([`api/Dockerfile`](api/Dockerfile:1)): Production-ready FastAPI backend
   - Uses [`api/requirements.txt`](api/requirements.txt:1) with minimal dependencies
   - Optimized for cloud deployment
   - No pipeline dependencies (pandas, numpy) for smaller image size
   - Deployed to cloud infrastructure
+
+- **Frontend Service** ([`frontend/Dockerfile`](frontend/Dockerfile:1)): Streamlit dashboard
+  - Uses [`frontend/requirements.txt`](frontend/requirements.txt:1) with Streamlit and visualization libraries
+  - Provides interactive web interface for property data and investment insights
+  - Communicates with API service for data
+  - Can be deployed alongside API
 
 - **Pipeline Service** ([`Dockerfile`](Dockerfile:1)): Local development only
   - Uses [`requirements.txt`](requirements.txt:1) with all dependencies
@@ -272,14 +359,14 @@ docker-compose up -d
 
 ### Key Differences
 
-| Feature | API Service | Pipeline Service |
-|---------|-------------|------------------|
-| Deployment | Cloud & Local | Local Only |
-| Dependencies | API-only (fastapi, uvicorn, pydantic, psycopg2) | All (API + pandas, numpy) |
-| Dockerfile | [`api/Dockerfile`](api/Dockerfile:1) | [`Dockerfile`](Dockerfile:1) |
-| Requirements | [`api/requirements.txt`](api/requirements.txt:1) | [`requirements.txt`](requirements.txt:1) |
-| Image Size | Smaller (~100MB) | Larger (~500MB) |
-| Use Case | Production API | Data processing & ETL |
+| Feature | API Service | Frontend Service | Pipeline Service |
+|---------|-------------|------------------|------------------|
+| Deployment | Cloud & Local | Cloud & Local | Local Only |
+| Dependencies | API-only (fastapi, uvicorn, pydantic, psycopg2) | Streamlit + visualization (streamlit, plotly, pandas, requests) | All (API + pandas, numpy) |
+| Dockerfile | [`api/Dockerfile`](api/Dockerfile:1) | [`frontend/Dockerfile`](frontend/Dockerfile:1) | [`Dockerfile`](Dockerfile:1) |
+| Requirements | [`api/requirements.txt`](api/requirements.txt:1) | [`frontend/requirements.txt`](frontend/requirements.txt:1) | [`requirements.txt`](requirements.txt:1) |
+| Image Size | Smaller (~100MB) | Medium (~200MB) | Larger (~500MB) |
+| Use Case | Production API | Web Dashboard | Data processing & ETL |
 
 ### Health Checks
 
@@ -287,6 +374,12 @@ The API service includes health checks:
 
 ```bash
 curl http://localhost:8000/api/v1/health
+```
+
+The frontend service also includes health checks:
+
+```bash
+curl http://localhost:8501/_stcore/health
 ```
 
 Health check configuration in [`docker-compose.yml`](docker-compose.yml:1):

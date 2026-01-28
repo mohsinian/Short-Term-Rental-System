@@ -1,0 +1,14 @@
+# Frontend dependencies for Streamlit Dashboard
+
+# Streamlit framework
+streamlit>=1.31.0
+
+# Data visualization
+plotly>=5.18.0
+pandas>=2.2.0
+
+# HTTP requests
+requests>=2.31.0
+
+# Environment variables
+python-dotenv>=1.0.1

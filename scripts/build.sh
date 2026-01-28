@@ -18,9 +18,9 @@ fi
 SERVICE=${1:-"all"}
 
 case $SERVICE in
-    "pipeline"|"api"|"all")
+    "pipeline"|"api"|"frontend"|"all")
         if [ "$SERVICE" = "all" ]; then
-            echo "🔨 Building all Docker images (pipeline + api)..."
+            echo "🔨 Building all Docker images (pipeline + api + frontend)..."
             docker-compose build
         else
             echo "🔨 Building Docker image for service: $SERVICE..."
@@ -35,9 +35,10 @@ case $SERVICE in
         echo "Usage: $0 [service]"
         echo ""
         echo "Services:"
-        echo "  pipeline - Build pipeline service only"
-        echo "  api      - Build API service only"
-        echo "  all      - Build all services (default)"
+        echo "  pipeline  - Build pipeline service only"
+        echo "  api       - Build API service only"
+        echo "  frontend  - Build frontend service only"
+        echo "  all       - Build all services (default)"
         echo ""
         exit 1
         ;;

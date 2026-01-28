@@ -87,17 +87,18 @@ build_docker() {
     print_header "Build Docker Image"
     echo ""
     echo "Select build option:"
-    echo "  1) Build all services (pipeline + api)"
+    echo "  1) Build all services (pipeline + api + frontend)"
     echo "  2) Build pipeline service only"
     echo "  3) Build API service only"
+    echo "  4) Build frontend service only"
     echo "  0) Back to main menu"
     echo ""
-    read -p "Enter your choice [0-3]: " build_choice
-
+    read -p "Enter your choice [0-4]: " build_choice
+    
     case $build_choice in
         1)
             echo ""
-            print_info "Building all Docker images (pipeline + api)..."
+            print_info "Building all Docker images (pipeline + api + frontend)..."
             if $DOCKER_COMPOSE build; then
                 print_success "Docker images built successfully!"
             else
@@ -125,6 +126,16 @@ build_docker() {
                 return 1
             fi
             ;;
+        4)
+            echo ""
+            print_info "Building frontend service..."
+            if $DOCKER_COMPOSE build frontend; then
+                print_success "Frontend service built successfully!"
+            else
+                print_error "Failed to build frontend service"
+                return 1
+            fi
+            ;;
         0)
             return
             ;;
@@ -133,7 +144,7 @@ build_docker() {
             ;;
     esac
     echo ""
-}
+    }
 
 # Function to run migrations
 run_migrations() {
@@ -355,6 +366,16 @@ show_status() {
         print_warning "Pipeline service is not running"
     fi
     
+    # Check Frontend service
+    echo ""
+    print_info "Frontend Service Status:"
+    if $DOCKER_COMPOSE ps frontend | grep -q "Up"; then
+        print_success "Frontend service is running"
+        print_info "  Frontend URL: http://localhost:8501"
+    else
+        print_warning "Frontend service is not running"
+    fi
+    
     # Check Docker images
     echo ""
     print_info "Docker images:"
@@ -366,7 +387,7 @@ show_status() {
     docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "NAMES|short-term-rental" || echo "  No containers running"
     
     echo ""
-}
+    }
 
 # Function to manage API service
 manage_api() {
@@ -459,13 +480,15 @@ manage_containers() {
     echo "  3) View logs (all services)"
     echo "  4) View logs (API service only)"
     echo "  5) View logs (Pipeline service only)"
-    echo "  6) Remove all containers and volumes"
-    echo "  7) Restart API service"
-    echo "  8) Restart Pipeline service"
+    echo "  6) View logs (Frontend service only)"
+    echo "  7) Remove all containers and volumes"
+    echo "  8) Restart API service"
+    echo "  9) Restart Pipeline service"
+    echo " 10) Restart Frontend service"
     echo "  0) Back to main menu"
     echo ""
-    read -p "Enter your choice [0-8]: " container_choice
-
+    read -p "Enter your choice [0-10]: " container_choice
+    
     case $container_choice in
         1)
             echo ""
@@ -475,6 +498,7 @@ manage_containers() {
             echo ""
             print_info "API Service: http://localhost:8000"
             print_info "API Docs: http://localhost:8000/docs"
+            print_info "Frontend: http://localhost:8501"
             ;;
         2)
             echo ""
@@ -499,6 +523,11 @@ manage_containers() {
             ;;
         6)
             echo ""
+            print_info "Showing logs for Frontend service (press Ctrl+C to exit)..."
+            $DOCKER_COMPOSE logs -f frontend
+            ;;
+        7)
+            echo ""
             print_warning "This will remove all containers and volumes!"
             read -p "Are you sure? (yes/no): " confirm
             if [ "$confirm" = "yes" ]; then
@@ -509,7 +538,7 @@ manage_containers() {
                 print_info "Operation cancelled."
             fi
             ;;
-        7)
+        8)
             echo ""
             print_info "Restarting API service..."
             $DOCKER_COMPOSE restart api
@@ -518,11 +547,19 @@ manage_containers() {
             print_info "API Service: http://localhost:8000"
             print_info "API Docs: http://localhost:8000/docs"
             ;;
-        8)
+        9)
             echo ""
             print_info "Restarting Pipeline service..."
             $DOCKER_COMPOSE restart pipeline
             print_success "Pipeline service restarted!"
+            ;;
+        10)
+            echo ""
+            print_info "Restarting Frontend service..."
+            $DOCKER_COMPOSE restart frontend
+            print_success "Frontend service restarted!"
+            echo ""
+            print_info "Frontend: http://localhost:8501"
             ;;
         0)
             return
@@ -532,7 +569,7 @@ manage_containers() {
             ;;
     esac
     echo ""
-}
+    }
 
 # Main menu
 main_menu() {

@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
 
-from api.routes import properties, markets, investment_scores, health
+from api.routes import properties, markets, investment_scores, health, insights
 
 # Configure logging
 logging.basicConfig(
@@ -52,6 +52,7 @@ app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(properties.router, prefix="/api/v1", tags=["properties"])
 app.include_router(markets.router, prefix="/api/v1", tags=["markets"])
 app.include_router(investment_scores.router, prefix="/api/v1", tags=["investment-scores"])
+app.include_router(insights.router, prefix="/api/v1", tags=["insights"])
 
 
 @app.get("/")

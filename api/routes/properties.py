@@ -11,10 +11,12 @@ import logging
 from api.models import (
     PropertyBasic, PropertyDetail, PropertyListResponse, 
     PropertyDetailResponse, PropertyPerformance, PropertyAmenities,
-    PropertyReviews, Market
+    PropertyReviews, Market, PropertyAnalysis, PropertyAnalysisResponse,
+    MarketComparison, PerformanceVsMarket, ComparableProperty
 )
 from api.database import (
-    get_properties, get_property_by_id, get_properties_count
+    get_properties, get_property_by_id, get_properties_count,
+    get_property_analysis, get_comparable_properties
 )
 
 logger = logging.getLogger(__name__)
@@ -225,3 +227,146 @@ async def get_property(property_id: str):
     except Exception as e:
         logger.error(f"Error getting property {property_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting property: {str(e)}")
+
+
+@router.get("/properties/{property_id}/analysis", response_model=PropertyAnalysisResponse, tags=["properties"])
+async def get_property_analysis_endpoint(
+    property_id: str,
+    include_comparables: bool = Query(True, description="Include comparable properties nearby")
+):
+    """
+    Get property details with score breakdown and market comparison.
+    
+    This endpoint provides comprehensive property analysis including:
+    - Score breakdown across all components
+    - Comparison to market averages (same bedroom count, same market)
+    - Comparable properties nearby (optional)
+    
+    Args:
+        property_id: UUID of property
+        include_comparables: Whether to include comparable properties nearby
+    
+    Returns:
+        Property analysis with market comparison and optional comparables
+    """
+    try:
+        # Get property analysis from materialized view
+        analysis_data = get_property_analysis(property_id)
+        
+        if not analysis_data:
+            raise HTTPException(status_code=404, detail=f"Property with ID {property_id} not found")
+        
+        # Build market comparison
+        market_comparison = MarketComparison(
+            property_count=analysis_data.get('market_property_count'),
+            avg_revenue=analysis_data.get('market_avg_revenue'),
+            avg_occupancy=analysis_data.get('market_avg_occupancy'),
+            avg_adr=analysis_data.get('market_avg_adr'),
+            avg_rating=analysis_data.get('market_avg_rating'),
+            avg_total_score=analysis_data.get('market_avg_total_score'),
+            median_revenue=analysis_data.get('market_median_revenue'),
+            median_occupancy=analysis_data.get('market_median_occupancy'),
+            median_adr=analysis_data.get('market_median_adr'),
+            median_rating=analysis_data.get('market_median_rating'),
+            median_total_score=analysis_data.get('market_median_total_score')
+        )
+        
+        # Build performance vs market
+        performance_vs_market = PerformanceVsMarket(
+            revenue_vs_market_pct=analysis_data.get('revenue_vs_market_pct'),
+            occupancy_vs_market_pct=analysis_data.get('occupancy_vs_market_pct'),
+            adr_vs_market_pct=analysis_data.get('adr_vs_market_pct'),
+            rating_vs_market_pct=analysis_data.get('rating_vs_market_pct')
+        )
+        
+        # Build property analysis
+        property_analysis = PropertyAnalysis(
+            id=analysis_data.get('id'),
+            property_id=analysis_data.get('property_id'),
+            title=analysis_data.get('title'),
+            bedrooms=analysis_data.get('bedrooms'),
+            bathrooms=analysis_data.get('bathrooms'),
+            accommodates=analysis_data.get('accommodates'),
+            property_type=analysis_data.get('property_type'),
+            room_type=analysis_data.get('room_type'),
+            beds=analysis_data.get('beds'),
+            latitude=analysis_data.get('latitude'),
+            longitude=analysis_data.get('longitude'),
+            city_name=analysis_data.get('city_name'),
+            zipcode=analysis_data.get('zipcode'),
+            airbnb_listing_url=analysis_data.get('airbnb_listing_url'),
+            vrbo_listing_url=analysis_data.get('vrbo_listing_url'),
+            is_guest_favorite=analysis_data.get('is_guest_favorite', False),
+            is_reliable_data=analysis_data.get('is_reliable_data', True),
+            market_id=analysis_data.get('market_id'),
+            market_name=analysis_data.get('market_name'),
+            market_state=analysis_data.get('market_state'),
+            revenue=analysis_data.get('revenue'),
+            revenue_potential=analysis_data.get('revenue_potential'),
+            adr=analysis_data.get('adr'),
+            cleaning_fee=analysis_data.get('cleaning_fee'),
+            occupancy=analysis_data.get('occupancy'),
+            available_nights=analysis_data.get('available_nights'),
+            total_reviews=analysis_data.get('total_reviews'),
+            rating=analysis_data.get('rating'),
+            property_reviews_count=analysis_data.get('property_reviews_count'),
+            high_season_reviews=analysis_data.get('high_season_reviews'),
+            high_season_label=analysis_data.get('high_season_label'),
+            revenue_score=analysis_data.get('revenue_score'),
+            occupancy_score=analysis_data.get('occupancy_score'),
+            adr_score=analysis_data.get('adr_score'),
+            review_score=analysis_data.get('review_score'),
+            amenity_score=analysis_data.get('amenity_score'),
+            host_score=analysis_data.get('host_score'),
+            seasonal_score=analysis_data.get('seasonal_score'),
+            market_score=analysis_data.get('market_score'),
+            total_score=analysis_data.get('total_score'),
+            percentile_rank=analysis_data.get('percentile_rank'),
+            is_top_opportunity=analysis_data.get('is_top_opportunity', False),
+            opportunity_tier=analysis_data.get('opportunity_tier'),
+            scoring_version=analysis_data.get('scoring_version'),
+            score_calculated_at=analysis_data.get('score_calculated_at'),
+            host_is_super_host=analysis_data.get('host_is_super_host'),
+            market_comparison=market_comparison,
+            performance_vs_market=performance_vs_market
+        )
+        
+        # Get comparable properties if requested
+        comparables = None
+        if include_comparables:
+            comparables_data = get_comparable_properties(
+                property_id=property_id,
+                market_id=analysis_data.get('market_id'),
+                bedrooms=analysis_data.get('bedrooms'),
+                latitude=analysis_data.get('latitude'),
+                longitude=analysis_data.get('longitude'),
+                limit=5
+            )
+            comparables = [
+                ComparableProperty(
+                    id=comp.get('id'),
+                    property_id=comp.get('property_id'),
+                    title=comp.get('title'),
+                    bedrooms=comp.get('bedrooms'),
+                    bathrooms=comp.get('bathrooms'),
+                    distance_km=comp.get('distance_km'),
+                    revenue=comp.get('revenue'),
+                    occupancy=comp.get('occupancy'),
+                    adr=comp.get('adr'),
+                    rating=comp.get('rating'),
+                    total_score=comp.get('total_score'),
+                    opportunity_tier=comp.get('opportunity_tier')
+                )
+                for comp in comparables_data
+            ]
+        
+        return PropertyAnalysisResponse(
+            success=True,
+            data=property_analysis,
+            comparables=comparables
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting property analysis {property_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting property analysis: {str(e)}")

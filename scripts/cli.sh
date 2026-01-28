@@ -26,17 +26,7 @@ else
     NC=''
 fi
 
-# Determine which docker compose command to use
-if command -v docker-compose >/dev/null 2>&1; then
-    DOCKER_COMPOSE="docker-compose"
-elif docker compose version >/dev/null 2>&1; then
-    DOCKER_COMPOSE="docker compose"
-else
-    print_error "Neither docker-compose nor docker compose is available!"
-    exit 1
-fi
-
-# Function to print colored text
+# Function to print colored text (must be defined before use)
 print_header() {
     printf "${CYAN}${BOLD}%s${NC}\n" "$1"
 }
@@ -56,6 +46,16 @@ print_info() {
 print_warning() {
     printf "${YELLOW}⚠ %s${NC}\n" "$1"
 }
+
+# Determine which docker compose command to use
+if command -v docker-compose >/dev/null 2>&1; then
+    DOCKER_COMPOSE="docker-compose"
+elif docker compose version >/dev/null 2>&1; then
+    DOCKER_COMPOSE="docker compose"
+else
+    print_error "Neither docker-compose nor docker compose is available!"
+    exit 1
+fi
 
 # Function to check prerequisites
 check_prerequisites() {

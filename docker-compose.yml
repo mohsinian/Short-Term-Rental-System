@@ -10,8 +10,9 @@ services:
       - PYTHONPATH=/app
     volumes:
       - .:/app
-    # Default command - run the interactive CLI
-    command: bash scripts/cli.sh
+    # Default command - simple Python version check
+    # Note: Use ./scripts/cli.sh from HOST machine to manage containers
+    command: python --version
     stdin_open: true
     tty: true
     restart: "no"

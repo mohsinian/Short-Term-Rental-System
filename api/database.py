@@ -552,7 +552,7 @@ def get_properties_with_scores(
     with DatabaseConnection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             query = """
-                SELECT 
+                SELECT
                     id, property_id, title, bedrooms, bathrooms, accommodates,
                     property_type, room_type, beds, latitude, longitude,
                     city_name, zipcode, airbnb_listing_url, vrbo_listing_url,
@@ -622,6 +622,9 @@ def get_properties_with_scores(
 
             query += " OFFSET %s"
             params.append(offset)
+
+            logger.debug(f"get_properties_with_scores query: {query}")
+            logger.debug(f"get_properties_with_scores params: {params}")
 
             cur.execute(query, params)
             return cur.fetchall()
@@ -820,6 +823,67 @@ def get_top_performers(limit: int = 20) -> List[Dict[str, Any]]:
             """
             cur.execute(query, (limit,))
             return cur.fetchall()
+
+
+def get_top_opportunities_from_mv(limit: int = 20) -> List[Dict[str, Any]]:
+    """
+    Get top investment opportunities from materialized view for API endpoint.
+
+    This function queries mv_top_performers materialized view to get top opportunities
+    with all necessary fields for the InvestmentScoreWithProperty model.
+
+    Args:
+        limit: Maximum number of opportunities to return
+
+    Returns:
+        List of top opportunity dictionaries with correct field names for API
+    """
+    with DatabaseConnection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            query = """
+                SELECT
+                    id,
+                    property_id,
+                    title,
+                    bedrooms,
+                    market_name,
+                    revenue,
+                    occupancy,
+                    adr,
+                    rating,
+                    total_score,
+                    opportunity_tier,
+                    revenue_score,
+                    occupancy_score,
+                    adr_score,
+                    review_score,
+                    amenity_score,
+                    host_score,
+                    seasonal_score,
+                    market_score,
+                    percentile_rank,
+                    is_top_opportunity,
+                    overall_rank
+                FROM mv_top_performers
+                ORDER BY overall_rank ASC
+                LIMIT %s
+            """
+            cur.execute(query, (limit,))
+            results = cur.fetchall()
+
+            # Log for debugging
+            if results:
+                logger.info(
+                    f"get_top_opportunities_from_mv: Retrieved {len(results)} rows"
+                )
+                logger.info(
+                    f"get_top_opportunities_from_mv: First row keys: {list(results[0].keys())}"
+                )
+                logger.info(
+                    f"get_top_opportunities_from_mv: First row id value: {results[0].get('id')} (type: {type(results[0].get('id'))})"
+                )
+
+            return results
 
 
 def get_top_performers_by_market(market_id: str) -> List[Dict[str, Any]]:

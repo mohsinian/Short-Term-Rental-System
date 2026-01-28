@@ -168,7 +168,7 @@ run_migrations() {
         4)
             echo ""
             print_info "Testing database connection..."
-            $DOCKER_COMPOSE run --rm pipeline python -c "from src.database import test_connection; test_connection()"
+            $DOCKER_COMPOSE run --rm pipeline python -c "from src.database import test_pg_connection; test_pg_connection()"
             ;;
         0)
             return

@@ -28,7 +28,7 @@ Edit `.env` with your Supabase credentials:
 ```bash
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SECRET_KEY=your-service-role-key
-SUPABASE_DB_CONNECTION_STRING=postgresql://postgres.xxxxx:password@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+SUPABASE_DB_CONNECTION_STRING=postgresql://postgres.[Project-Id]:[YOUR-PASSWORD]@aws-1-ap-south-1.pooler.supabase.com:5432/postgres
 ```
 
 ### 3. Run Database Migrations

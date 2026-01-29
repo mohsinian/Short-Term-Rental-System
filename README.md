@@ -27,7 +27,7 @@ Edit `.env` with your Supabase credentials:
 
 ```bash
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SECRET_KEY=your-service-role-key
+SUPABASE_SECRET_KEY=your-secret-key (sb_secret_...)
 SUPABASE_DB_CONNECTION_STRING=postgresql://postgres.[Project-Id]:[YOUR-PASSWORD]@aws-1-ap-south-1.pooler.supabase.com:5432/postgres
 ```
 

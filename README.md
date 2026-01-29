@@ -9,6 +9,7 @@ A data pipeline system for managing short-term rental property data with optimiz
 - Docker and Docker Compose
 - Supabase project with database credentials
 - Python 3.12+ (if running locally)
+- In project root, create a folder naming it “data” where you will put all your CSVs, proper naming format should be placeName_stateName.csv (e.g: Blue_Ridge_GA.csv or Indianapolis_IN.csv)
 
 ## Setup
 
